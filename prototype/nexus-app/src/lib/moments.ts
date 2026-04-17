@@ -1,4 +1,4 @@
-import type { PersonaId } from "./types";
+import type { PersonaId, AlarmMode } from "./types";
 
 /**
  * A "Moment" is a multi-device flow — a one-tap combination that orchestrates
@@ -11,7 +11,9 @@ export type MomentStepAction =
   | { kind: "tv"; state: "on" | "off"; source?: string; volume?: number }
   | { kind: "climate"; mode?: "off" | "cool" | "heat" | "auto"; target?: number }
   | { kind: "scene"; sceneIdPattern: string } // substring match on scene id/name
-  | { kind: "cameras"; state: "on" | "off" };
+  | { kind: "cameras"; state: "on" | "off" }
+  | { kind: "locks"; state: "lock" | "unlock"; filter?: "all" | "outdoor" | "indoor" }
+  | { kind: "alarm"; mode: AlarmMode };
 
 export interface MomentStep {
   /** Short label shown in the progress overlay, e.g. "Atenuando luces". */
@@ -61,6 +63,7 @@ export const MOMENTS: Moment[] = [
     gradient: "from-[#FFE4B8] to-[#FFC58A] dark:from-gold/25 dark:to-gold/5",
     timeHints: ["morning"],
     steps: [
+      { label: "Desactivando alarma", actions: [{ kind: "alarm", mode: "disarmed" }], delayMs: 350 },
       { label: "Subiendo luces", actions: [{ kind: "lights", filter: "all", state: "on", dim: 40 }], delayMs: 500 },
       { label: "Ajustando clima", actions: [{ kind: "climate", mode: "auto", target: 23 }], delayMs: 400 },
       { label: "Listo", actions: [{ kind: "lights", filter: "sala", state: "on", dim: 70 }] },
@@ -74,9 +77,10 @@ export const MOMENTS: Moment[] = [
     gradient: "from-[#FFE9B8] to-[#FFD27A]",
     timeHints: ["afternoon", "evening"],
     steps: [
+      { label: "Desactivando alarma", actions: [{ kind: "alarm", mode: "disarmed" }, { kind: "locks", state: "unlock", filter: "outdoor" }], delayMs: 400 },
       { label: "Encendiendo entrada", actions: [{ kind: "lights", filter: "indoor", state: "on", dim: 80 }], delayMs: 400 },
       { label: "Activando escena de llegada", actions: [{ kind: "scene", sceneIdPattern: "bienvenida|llegada|noche" }], delayMs: 400 },
-      { label: "Clima confort", actions: [{ kind: "climate", mode: "auto", target: 22 }] },
+      { label: "Clima confort", actions: [{ kind: "climate", mode: "auto", target: 22 }, { kind: "alarm", mode: "home" }] },
     ],
   },
   {
@@ -125,8 +129,9 @@ export const MOMENTS: Moment[] = [
     timeHints: ["night"],
     steps: [
       { label: "Apagando luces", actions: [{ kind: "lights", filter: "all", state: "off" }], delayMs: 500 },
+      { label: "Cerrando puertas", actions: [{ kind: "locks", state: "lock", filter: "all" }], delayMs: 350 },
       { label: "Apagando TV", actions: [{ kind: "tv", state: "off" }], delayMs: 300 },
-      { label: "Clima nocturno", actions: [{ kind: "climate", mode: "cool", target: 20 }] },
+      { label: "Modo noche", actions: [{ kind: "climate", mode: "cool", target: 20 }, { kind: "alarm", mode: "night" }] },
     ],
   },
   {
@@ -139,7 +144,8 @@ export const MOMENTS: Moment[] = [
     steps: [
       { label: "Apagando luces", actions: [{ kind: "lights", filter: "all", state: "off" }], delayMs: 400 },
       { label: "TV off", actions: [{ kind: "tv", state: "off" }], delayMs: 300 },
-      { label: "Clima eco", actions: [{ kind: "climate", mode: "off" }] },
+      { label: "Cerrando puertas", actions: [{ kind: "locks", state: "lock", filter: "all" }], delayMs: 350 },
+      { label: "Armando alarma", actions: [{ kind: "climate", mode: "off" }, { kind: "alarm", mode: "away" }] },
     ],
   },
 ];

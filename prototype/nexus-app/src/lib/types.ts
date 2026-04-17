@@ -252,7 +252,16 @@ export type EventType =
   | "rbac.role-changed"
   | "demo.reset"
   | "moment.started"
-  | "moment.finished";
+  | "moment.finished"
+  | "alarm.armed"
+  | "alarm.disarmed"
+  | "alarm.triggered"
+  | "panic.activated"
+  | "zone.applied";
+
+export type AlarmMode = "home" | "away" | "night" | "disarmed";
+
+export type ZoneScope = "room" | "floor";
 
 export interface NexusEvent {
   eventId: string;
@@ -275,7 +284,9 @@ export type HomeWidget =
   | { id: string; type: "lightGroup"; size: WidgetSize; deviceIds: string[]; name: string }
   | { id: string; type: "tv"; size: WidgetSize; deviceId: string }
   | { id: string; type: "scene"; size: WidgetSize; sceneId: string }
-  | { id: string; type: "climate"; size: WidgetSize; deviceId: string };
+  | { id: string; type: "climate"; size: WidgetSize; deviceId: string }
+  | { id: string; type: "securityPanel"; size: WidgetSize }
+  | { id: string; type: "zone"; size: WidgetSize; scope: ZoneScope; targetId: string; name: string };
 
 export type WidgetType = HomeWidget["type"];
 

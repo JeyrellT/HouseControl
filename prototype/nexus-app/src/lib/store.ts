@@ -27,6 +27,8 @@ import type {
   HomeWidget,
   WidgetSize,
   TVState,
+  AlarmMode,
+  ZoneScope,
 } from "./types";
 import { emit } from "./event-bus";
 import { toast } from "./toast-store";
@@ -155,6 +157,20 @@ interface NexusStore {
     affectedDeviceIds: string[];
   } | null;
   runMoment: (momentId: string) => void;
+
+  // ----- Seguridad: alarma global -----
+  alarm: {
+    mode: AlarmMode;
+    lastChanged: string;
+    panic: boolean;
+  };
+  setAlarmMode: (mode: AlarmMode) => void;
+  triggerPanic: () => void;
+  clearPanic: () => void;
+
+  // ----- Zona: acciones masivas room/floor -----
+  applyZoneLights: (scope: ZoneScope, targetId: string, action: "on" | "off" | "dim", dim?: number) => void;
+  applyZoneLocks: (scope: ZoneScope, targetId: string, action: "lock" | "unlock") => void;
 }
 
 const capabilitiesIndex: Record<string, Capability> = Object.fromEntries(
@@ -163,6 +179,10 @@ const capabilitiesIndex: Record<string, Capability> = Object.fromEntries(
 
 /* ── Moment orchestration helpers ─────────────────────────── */
 
+function isOutdoorRoomId(roomId: string): boolean {
+  return /exterior|jardin|jard[ií]n|patio|garage|gara|piscina|terraza/.test(roomId.toLowerCase());
+}
+
 function matchLightFilter(device: Device, filter: "all" | "indoor" | "outdoor" | "sala" | "bedroom"): boolean {
   if (device.kind !== "light") return false;
   if (filter === "all") return true;
@@ -170,8 +190,14 @@ function matchLightFilter(device: Device, filter: "all" | "indoor" | "outdoor" |
   const name = device.name.toLowerCase();
   if (filter === "sala") return rid.includes("sala") || name.includes("sala");
   if (filter === "bedroom") return rid.includes("master") || rid.includes("hijos") || rid.includes("dorm") || rid.includes("bedroom");
-  // "indoor"/"outdoor" heuristic: outdoor rooms usually contain "exterior"|"jardin"|"patio"|"garage"
-  const isOutdoor = /exterior|jardin|jard[ií]n|patio|garage|gara|piscina|terraza/.test(rid);
+  const isOutdoor = isOutdoorRoomId(rid);
+  return filter === "outdoor" ? isOutdoor : !isOutdoor;
+}
+
+function matchLockFilter(device: Device, filter: "all" | "indoor" | "outdoor"): boolean {
+  if (device.kind !== "lock") return false;
+  if (filter === "all") return true;
+  const isOutdoor = isOutdoorRoomId(device.roomId);
   return filter === "outdoor" ? isOutdoor : !isOutdoor;
 }
 
@@ -189,7 +215,10 @@ function collectAffectedDeviceIds(action: MomentStepAction, personaDevices: Devi
       return personaDevices.filter((d) => d.kind === "climate").map((d) => d.id);
     case "cameras":
       return personaDevices.filter((d) => d.kind === "camera").map((d) => d.id);
+    case "locks":
+      return personaDevices.filter((d) => matchLockFilter(d, action.filter ?? "all")).map((d) => d.id);
     case "scene":
+    case "alarm":
       return [];
   }
 }
@@ -202,10 +231,11 @@ interface MomentExecCtx {
   toggleDevice: (deviceId: string) => void;
   setTvState: (deviceId: string, patch: Partial<TVState>) => void;
   runScene: (sceneId: string) => void;
+  setAlarmMode: (mode: AlarmMode) => void;
 }
 
 function executeMomentAction(action: MomentStepAction, ctx: MomentExecCtx): void {
-  const { personaDevices, scenes, capabilities, setCapability, toggleDevice, setTvState, runScene } = ctx;
+  const { personaDevices, scenes, capabilities, setCapability, toggleDevice, setTvState, runScene, setAlarmMode } = ctx;
 
   switch (action.kind) {
     case "lights": {
@@ -262,6 +292,22 @@ function executeMomentAction(action: MomentStepAction, ctx: MomentExecCtx): void
       const pattern = new RegExp(action.sceneIdPattern, "i");
       const match = scenes.find((s) => pattern.test(s.id) || pattern.test(s.name));
       if (match) runScene(match.id);
+      return;
+    }
+    case "locks": {
+      const filter = action.filter ?? "all";
+      const targetLocked = action.state === "lock";
+      const locks = personaDevices.filter((d) => matchLockFilter(d, filter));
+      for (const d of locks) {
+        const onCap = d.capabilityIds.map((cid) => capabilities[cid]).find((c) => c?.kind === "on_off");
+        if (!onCap) continue;
+        // Convention: on_off === true => locked
+        if (Boolean(onCap.value) !== targetLocked) toggleDevice(d.id);
+      }
+      return;
+    }
+    case "alarm": {
+      setAlarmMode(action.mode);
       return;
     }
     case "cameras":
@@ -402,6 +448,26 @@ export const useNexus = create<NexusStore>()(
         const climate = devices.find((d) => d.kind === "climate");
         if (climate) {
           seed.push({ id: uid("w"), type: "climate", size: "M", deviceId: climate.id });
+        }
+
+        // Security panel if persona has any locks
+        const hasLocks = devices.some((d) => d.kind === "lock");
+        if (hasLocks) {
+          seed.push({ id: uid("w"), type: "securityPanel", size: "M" });
+        }
+
+        // Zone widget for the first floor of the persona (e.g. "Planta Baja")
+        const personaFloors = FLOORS.filter((f) => f.personaId === personaId).sort((a, b) => a.order - b.order);
+        const groundFloor = personaFloors[0];
+        if (groundFloor) {
+          seed.push({
+            id: uid("w"),
+            type: "zone",
+            size: "M",
+            scope: "floor",
+            targetId: groundFloor.id,
+            name: groundFloor.name,
+          });
         }
 
         set((s) => ({
@@ -625,6 +691,7 @@ export const useNexus = create<NexusStore>()(
               toggleDevice: get().toggleDevice,
               setTvState: get().setTvState,
               runScene: get().runScene,
+              setAlarmMode: get().setAlarmMode,
             });
           }
 
@@ -658,9 +725,158 @@ export const useNexus = create<NexusStore>()(
           density: "minimal",
           userScenes: [],
           deletedSeedSceneIds: [],
+          alarm: { mode: "disarmed", lastChanged: new Date().toISOString(), panic: false },
         });
         emit({ type: "demo.reset", source: "user" });
         toast.info("Demo reiniciada", "Estado restaurado al inicial", { icon: "Info", duration: 2500 });
+      },
+
+      // ----- Seguridad: alarma global -----
+      alarm: { mode: "disarmed", lastChanged: new Date().toISOString(), panic: false },
+      setAlarmMode: (mode) => {
+        const prev = get().alarm.mode;
+        if (prev === mode) return;
+        const ts = new Date().toISOString();
+        set({ alarm: { ...get().alarm, mode, lastChanged: ts } });
+        emit({
+          type: mode === "disarmed" ? "alarm.disarmed" : "alarm.armed",
+          source: "user",
+          attributes: { mode, prev },
+        });
+        const labelMap: Record<AlarmMode, string> = {
+          home: "Modo Casa",
+          away: "Modo Ausente",
+          night: "Modo Noche",
+          disarmed: "Alarma desactivada",
+        };
+        const taglineMap: Record<AlarmMode, string> = {
+          home: "Sensores exteriores armados",
+          away: "Todo armado y asegurado",
+          night: "Exteriores y planta baja armados",
+          disarmed: "Sin vigilancia activa",
+        };
+        toast.success(labelMap[mode], taglineMap[mode], {
+          icon: mode === "disarmed" ? "Check" : "Shield",
+          duration: 2500,
+        });
+        get().appendActivity({
+          id: `act_${Date.now().toString(36)}`,
+          personaId: get().activePersonaId,
+          ts,
+          actor: "user",
+          intent: "alarm.setMode",
+          target: mode,
+          outcome: "success",
+          source: "user",
+          severity: "info",
+          summary: `${labelMap[mode]} activado`,
+        });
+      },
+      triggerPanic: () => {
+        const ts = new Date().toISOString();
+        set({ alarm: { ...get().alarm, panic: true, lastChanged: ts } });
+        emit({ type: "panic.activated", source: "user" });
+        // Activate any siren-labeled switch device for the active persona.
+        const personaId = get().activePersonaId;
+        const sirens = DEVICES.filter(
+          (d) =>
+            d.personaId === personaId &&
+            d.kind === "switch" &&
+            (d.name.toLowerCase().includes("sirena") || d.labelIds.includes("lbl-emergencia")),
+        );
+        for (const s of sirens) {
+          const onCap = s.capabilityIds
+            .map((cid) => get().capabilities[cid])
+            .find((c) => c?.kind === "on_off");
+          if (onCap && !onCap.value) get().toggleDevice(s.id);
+        }
+        toast.info("PÁNICO activado", "Sirenas encendidas, contactos notificados", {
+          icon: "AlertTriangle",
+          duration: 4000,
+        });
+        get().appendActivity({
+          id: `act_${Date.now().toString(36)}`,
+          personaId,
+          ts,
+          actor: "user",
+          intent: "panic.activate",
+          target: "alarm",
+          outcome: "success",
+          source: "user",
+          severity: "critical",
+          summary: `Botón de pánico activado (${sirens.length} sirenas)`,
+        });
+      },
+      clearPanic: () => {
+        const ts = new Date().toISOString();
+        set({ alarm: { ...get().alarm, panic: false, lastChanged: ts } });
+        const personaId = get().activePersonaId;
+        const sirens = DEVICES.filter(
+          (d) =>
+            d.personaId === personaId &&
+            d.kind === "switch" &&
+            (d.name.toLowerCase().includes("sirena") || d.labelIds.includes("lbl-emergencia")),
+        );
+        for (const s of sirens) {
+          const onCap = s.capabilityIds
+            .map((cid) => get().capabilities[cid])
+            .find((c) => c?.kind === "on_off");
+          if (onCap && onCap.value) get().toggleDevice(s.id);
+        }
+        toast.success("Pánico desactivado", "Sirenas apagadas", { icon: "Check", duration: 2200 });
+      },
+
+      // ----- Zona: acciones masivas room/floor -----
+      applyZoneLights: (scope, targetId, action, dim) => {
+        const personaId = get().activePersonaId;
+        const personaDevices = DEVICES.filter((d) => d.personaId === personaId);
+        const lightsInZone = personaDevices.filter((d) => {
+          if (d.kind !== "light") return false;
+          if (scope === "room") return d.roomId === targetId;
+          // floor scope: device.floorId matches
+          return d.floorId === targetId;
+        });
+        if (lightsInZone.length === 0) return;
+        const wantOn = action !== "off";
+        let touched = 0;
+        for (const d of lightsInZone) {
+          const caps = d.capabilityIds.map((cid) => get().capabilities[cid]).filter(Boolean);
+          const onCap = caps.find((c) => c?.kind === "on_off");
+          const dimCap = caps.find((c) => c?.kind === "dim");
+          if (onCap && Boolean(onCap.value) !== wantOn) {
+            get().toggleDevice(d.id);
+            touched++;
+          }
+          if (wantOn && action === "dim" && dimCap && typeof dim === "number") {
+            get().setCapability(dimCap.id, dim);
+            touched++;
+          }
+        }
+        emit({
+          type: "zone.applied",
+          source: "user",
+          attributes: { scope, targetId, action, dim, touched },
+        });
+      },
+      applyZoneLocks: (scope, targetId, action) => {
+        const personaId = get().activePersonaId;
+        const personaDevices = DEVICES.filter((d) => d.personaId === personaId);
+        const locksInZone = personaDevices.filter((d) => {
+          if (d.kind !== "lock") return false;
+          if (scope === "room") return d.roomId === targetId;
+          return d.floorId === targetId;
+        });
+        if (locksInZone.length === 0) return;
+        const wantLocked = action === "lock";
+        for (const d of locksInZone) {
+          const onCap = d.capabilityIds.map((cid) => get().capabilities[cid]).find((c) => c?.kind === "on_off");
+          if (onCap && Boolean(onCap.value) !== wantLocked) get().toggleDevice(d.id);
+        }
+        emit({
+          type: "zone.applied",
+          source: "user",
+          attributes: { scope, targetId, action: wantLocked ? "lock" : "unlock" },
+        });
       },
     }),
     {
@@ -679,6 +895,7 @@ export const useNexus = create<NexusStore>()(
         homeWidgets: state.homeWidgets,
         homeCanvasInitialized: state.homeCanvasInitialized,
         tvStates: state.tvStates,
+        alarm: state.alarm,
       }),
     },
   ),
@@ -750,4 +967,83 @@ export function selectGatewaysByPersona(personaId: PersonaId) {
 export function selectPrimaryUser(personaId: PersonaId) {
   const persona = PERSONAS.find((p) => p.id === personaId);
   return USERS.find((u) => u.id === persona?.primaryUserId);
+}
+
+/* ── Zone helpers (room/floor) ────────────────────────────── */
+
+export function selectDevicesInZone(
+  scope: "room" | "floor",
+  targetId: string,
+  personaId: PersonaId,
+): Device[] {
+  return DEVICES.filter(
+    (d) =>
+      d.personaId === personaId &&
+      (scope === "room" ? d.roomId === targetId : d.floorId === targetId),
+  );
+}
+
+export interface ZoneSummary {
+  lightsTotal: number;
+  lightsOn: number;
+  avgDim: number | null;
+  locksTotal: number;
+  locksLocked: number;
+  motionActive: boolean;
+  climateAvgTemp: number | null;
+}
+
+/** Snapshot of zone state derived from current capability values. */
+export function getZoneSummary(
+  scope: "room" | "floor",
+  targetId: string,
+  personaId: PersonaId,
+  capabilities: Record<string, Capability>,
+): ZoneSummary {
+  const devices = selectDevicesInZone(scope, targetId, personaId);
+  let lightsTotal = 0;
+  let lightsOn = 0;
+  let dimSum = 0;
+  let dimCount = 0;
+  let locksTotal = 0;
+  let locksLocked = 0;
+  let motionActive = false;
+  let climateSum = 0;
+  let climateCount = 0;
+  for (const d of devices) {
+    const caps = d.capabilityIds.map((cid) => capabilities[cid]).filter(Boolean) as Capability[];
+    const onCap = caps.find((c) => c.kind === "on_off");
+    const dimCap = caps.find((c) => c.kind === "dim");
+    const motionCap = caps.find((c) => c.kind === "motion");
+    const thermo = caps.find((c) => c.kind === "thermostat");
+    if (d.kind === "light") {
+      lightsTotal++;
+      if (onCap?.value) lightsOn++;
+      if (dimCap && typeof dimCap.value === "number") {
+        dimSum += dimCap.value as number;
+        dimCount++;
+      }
+    }
+    if (d.kind === "lock") {
+      locksTotal++;
+      if (onCap?.value) locksLocked++;
+    }
+    if (motionCap?.value) motionActive = true;
+    if (d.kind === "climate" && thermo && typeof thermo.value === "object" && thermo.value) {
+      const v = thermo.value as { current?: number; target?: number };
+      if (typeof v.current === "number") {
+        climateSum += v.current;
+        climateCount++;
+      }
+    }
+  }
+  return {
+    lightsTotal,
+    lightsOn,
+    avgDim: dimCount > 0 ? Math.round(dimSum / dimCount) : null,
+    locksTotal,
+    locksLocked,
+    motionActive,
+    climateAvgTemp: climateCount > 0 ? Math.round((climateSum / climateCount) * 10) / 10 : null,
+  };
 }

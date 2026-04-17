@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
-import { Plus, Pencil, Check, RotateCcw, LayoutGrid } from "lucide-react";
-import { useNexus, selectActivePersona } from "@/lib/store";
+import { Plus, Pencil, Check, RotateCcw, LayoutGrid, Shield, ShieldOff, Lock, Thermometer } from "lucide-react";
+import { useNexus, selectActivePersona, selectDevicesByPersona, getZoneSummary } from "@/lib/store";
 import {
   WidgetRenderer,
   WidgetFrame,
@@ -72,7 +72,11 @@ export default function HomePage() {
         return affectedIds.has(w.deviceId);
       case "lightGroup":
         return w.deviceIds.some((id) => affectedIds.has(id));
+      case "zone":
+        // Zone is highlighted if any of its devices are touched in this step.
+        return false; // computed below per-render via scope check (kept simple here)
       case "scene":
+      case "securityPanel":
         return false;
     }
   }
@@ -176,6 +180,9 @@ export default function HomePage() {
 
         {/* Moments strip (multi-device flows) */}
         {!editMode && <MomentsBar personaId={personaId} />}
+
+        {/* Contextual home status band */}
+        {!editMode && <HomeStatusBand />}
 
         {/* Grid */}
         {widgets.length === 0 ? (
@@ -297,6 +304,119 @@ function EmptyCanvas({ onAdd }: { onAdd: () => void }) {
         <Plus className="h-4 w-4" />
         Agregar primer widget
       </button>
+    </motion.div>
+  );
+}
+
+const ALARM_LABEL: Record<string, string> = {
+  home: "Casa armada",
+  away: "Modo ausente",
+  night: "Modo noche",
+  disarmed: "Sin alarma",
+};
+
+/**
+ * Compact contextual band showing global home state at a glance:
+ * alarm mode, lock status, climate. Hidden during edit mode.
+ */
+function HomeStatusBand() {
+  const personaId = useNexus((s) => s.activePersonaId);
+  const alarm = useNexus((s) => s.alarm);
+  const capabilities = useNexus((s) => s.capabilities);
+  const setAlarmMode = useNexus((s) => s.setAlarmMode);
+
+  const stats = useMemo(() => {
+    const devices = selectDevicesByPersona(personaId);
+    const locks = devices.filter((d) => d.kind === "lock");
+    const lockedCount = locks.filter((d) => {
+      const onCap = d.capabilityIds.map((cid) => capabilities[cid]).find((c) => c?.kind === "on_off");
+      return Boolean(onCap?.value);
+    }).length;
+    const climates = devices.filter((d) => d.kind === "climate");
+    let avgTemp: number | null = null;
+    if (climates.length > 0) {
+      let sum = 0;
+      let count = 0;
+      for (const d of climates) {
+        const thermo = d.capabilityIds.map((cid) => capabilities[cid]).find((c) => c?.kind === "thermostat");
+        if (thermo && typeof thermo.value === "object" && thermo.value) {
+          const v = thermo.value as { current?: number };
+          if (typeof v.current === "number") {
+            sum += v.current;
+            count++;
+          }
+        }
+      }
+      if (count > 0) avgTemp = Math.round((sum / count) * 10) / 10;
+    }
+    return { locks: locks.length, lockedCount, avgTemp };
+  }, [personaId, capabilities]);
+
+  const armed = alarm.mode !== "disarmed";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 420, damping: 32, delay: 0.05 }}
+      className={cn(
+        "mb-4 rounded-2xl p-2.5 sm:p-3 border flex items-center gap-2 sm:gap-3 flex-wrap",
+        alarm.panic
+          ? "border-red-500/60 bg-red-500/10"
+          : armed
+            ? "border-gold/40 bg-gold/8"
+            : "border-line bg-surface-2/60",
+      )}
+      role="status"
+      aria-live="polite"
+    >
+      {/* Alarm chip — clickable to cycle disarmed↔home */}
+      <button
+        type="button"
+        onClick={() => setAlarmMode(armed ? "disarmed" : "home")}
+        className={cn(
+          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition",
+          alarm.panic
+            ? "bg-red-600 border-red-300 text-white animate-pulse"
+            : armed
+              ? "bg-gold/20 border-gold-border text-gold-border"
+              : "bg-surface border-line text-ink-soft hover:border-gold-border/40",
+        )}
+        aria-label="Cambiar estado de alarma"
+      >
+        {armed ? <Shield className="h-3.5 w-3.5" /> : <ShieldOff className="h-3.5 w-3.5" />}
+        <span>{alarm.panic ? "PÁNICO" : ALARM_LABEL[alarm.mode]}</span>
+      </button>
+
+      {/* Locks */}
+      {stats.locks > 0 && (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border",
+            stats.lockedCount === stats.locks
+              ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300"
+              : "bg-surface border-line text-ink-soft",
+          )}
+        >
+          <Lock className="h-3 w-3" />
+          <span className="tabular-nums">
+            {stats.lockedCount}/{stats.locks}
+          </span>
+          <span className="hidden sm:inline">cerraduras</span>
+        </span>
+      )}
+
+      {/* Climate */}
+      {stats.avgTemp !== null && (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-surface border border-line text-ink-soft tabular-nums">
+          <Thermometer className="h-3 w-3" />
+          {stats.avgTemp}°
+        </span>
+      )}
+
+      <span className="ml-auto text-[10px] text-ink-soft hidden sm:inline">
+        Estado del hogar
+      </span>
     </motion.div>
   );
 }

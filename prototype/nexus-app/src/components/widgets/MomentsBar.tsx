@@ -96,12 +96,11 @@ function MomentChip({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "relative shrink-0 min-h-[84px] w-[180px] sm:w-[200px] rounded-2xl p-3 text-left overflow-hidden",
-        "bg-gradient-to-br border transition-all",
-        moment.gradient,
+        "relative shrink-0 rounded-2xl p-3 text-left overflow-hidden bg-gradient-to-br border transition-all",
         isSuggested
-          ? "border-gold-border shadow-elev scale-[1.02]"
-          : "border-line/70 hover:border-gold-border/40",
+          ? "min-h-[100px] w-[260px] sm:w-[300px] border-gold-border shadow-elev"
+          : "min-h-[84px] w-[180px] sm:w-[200px] border-line/70 hover:border-gold-border/40",
+        moment.gradient,
         disabled && !isRunning && "opacity-50 cursor-not-allowed",
         isRunning && "ring-2 ring-gold ring-offset-2 ring-offset-[var(--surface)]",
       )}
@@ -142,14 +141,19 @@ function MomentChip({
         )}
       </div>
 
-      <p className="relative text-[11px] leading-snug opacity-80 line-clamp-2">
+      <p className={cn("relative leading-snug opacity-80", isSuggested ? "text-xs line-clamp-3" : "text-[11px] line-clamp-2")}>
         {moment.tagline}
       </p>
 
       {!isRunning && (
-        <div className="relative mt-2 flex items-center gap-1 text-[10px] opacity-70">
+        <div className="relative mt-2 flex items-center gap-1.5 text-[10px] opacity-80">
           <Play className="h-2.5 w-2.5" />
           <span>{moment.steps.length} pasos</span>
+          {isSuggested && (
+            <span className="ml-auto px-1.5 py-0.5 rounded-md bg-navy/80 text-cream text-[9px] font-bold uppercase tracking-wider">
+              Tocar para iniciar
+            </span>
+          )}
         </div>
       )}
     </motion.button>

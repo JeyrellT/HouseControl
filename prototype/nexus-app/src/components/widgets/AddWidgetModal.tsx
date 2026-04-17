@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Camera, Lightbulb, Tv, Sparkles, Thermometer, ChevronRight, Check,
+  Shield, LayoutGrid, Building, Sofa,
 } from "lucide-react";
 import { useNexus, STATIC, selectDevicesByPersona, selectScenesByPersona } from "@/lib/store";
 import type { HomeWidget, PersonaId, WidgetType, Device } from "@/lib/types";
@@ -18,7 +19,9 @@ type Option = {
 };
 
 const OPTIONS: Option[] = [
-  { type: "camera", label: "Cámara", description: "Feed en vivo de una cámara", Icon: Camera, defaultSize: "L" },
+  { type: "camera", label: "Cámara", description: "Feed en vivo + controles de seguridad", Icon: Camera, defaultSize: "L" },
+  { type: "zone", label: "Zona", description: "Controla toda una habitación o planta", Icon: LayoutGrid, defaultSize: "M" },
+  { type: "securityPanel", label: "Seguridad", description: "Modo de alarma + pánico", Icon: Shield, defaultSize: "M" },
   { type: "lightGroup", label: "Grupo de luces", description: "Controla varias luces juntas", Icon: Lightbulb, defaultSize: "M" },
   { type: "tv", label: "TV", description: "Control remoto táctil", Icon: Tv, defaultSize: "M" },
   { type: "scene", label: "Escena", description: "Ejecuta rutinas con un toque", Icon: Sparkles, defaultSize: "S" },
@@ -50,6 +53,8 @@ export function AddWidgetModal({
     (d) => d.kind === "switch" && d.labelIds?.includes("lbl-entretenimiento"),
   );
   const climates = devices.filter((d) => d.kind === "climate");
+  const rooms = STATIC.rooms.filter((r) => r.personaId === personaId);
+  const floors = STATIC.floors.filter((f) => f.personaId === personaId).sort((a, b) => a.order - b.order);
   const scenes = useMemo(
     () => selectScenesByPersona(personaId, userScenes, deletedSeedSceneIds),
     [personaId, userScenes, deletedSeedSceneIds],
@@ -239,6 +244,39 @@ export function AddWidgetModal({
                   )}
                 />
               )}
+
+              {step === "select" && chosen?.type === "securityPanel" && (
+                <div className="p-4">
+                  <p className="text-sm text-ink-soft mb-3">
+                    Panel central con los 4 modos de alarma (Casa, Ausente, Noche, Desarmado) y botón de pánico.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      commit({ type: "securityPanel", size: chosen.defaultSize } as Omit<HomeWidget, "id">)
+                    }
+                    className="w-full h-12 rounded-2xl bg-gold text-navy font-semibold"
+                  >
+                    Agregar panel
+                  </button>
+                </div>
+              )}
+
+              {step === "select" && chosen?.type === "zone" && (
+                <ZonePicker
+                  rooms={rooms.map((r) => ({ id: r.id, name: r.name }))}
+                  floors={floors.map((f) => ({ id: f.id, name: f.name }))}
+                  onCreate={(scope, targetId, name) =>
+                    commit({
+                      type: "zone",
+                      size: chosen.defaultSize,
+                      scope,
+                      targetId,
+                      name,
+                    } as Omit<HomeWidget, "id">)
+                  }
+                />
+              )}
             </div>
           </motion.div>
         </motion.div>
@@ -377,6 +415,67 @@ function LightGroupBuilder({
       >
         Agregar grupo ({selected.size})
       </button>
+    </div>
+  );
+}
+
+function ZonePicker({
+  rooms,
+  floors,
+  onCreate,
+}: {
+  rooms: { id: string; name: string }[];
+  floors: { id: string; name: string }[];
+  onCreate: (scope: "room" | "floor", targetId: string, name: string) => void;
+}) {
+  const [tab, setTab] = useState<"room" | "floor">("floor");
+  const list = tab === "floor" ? floors : rooms;
+
+  return (
+    <div className="p-4">
+      <div className="flex gap-1 mb-3 p-1 rounded-xl bg-surface-2 border border-line">
+        <button
+          type="button"
+          onClick={() => setTab("floor")}
+          className={cn(
+            "flex-1 h-10 rounded-lg text-xs font-medium inline-flex items-center justify-center gap-1.5 transition",
+            tab === "floor" ? "bg-gold text-navy" : "text-ink-soft hover:bg-line/40",
+          )}
+          aria-pressed={tab === "floor"}
+        >
+          <Building className="h-3.5 w-3.5" />
+          Planta
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("room")}
+          className={cn(
+            "flex-1 h-10 rounded-lg text-xs font-medium inline-flex items-center justify-center gap-1.5 transition",
+            tab === "room" ? "bg-gold text-navy" : "text-ink-soft hover:bg-line/40",
+          )}
+          aria-pressed={tab === "room"}
+        >
+          <Sofa className="h-3.5 w-3.5" />
+          Habitación
+        </button>
+      </div>
+
+      {list.length === 0 ? (
+        <p className="p-6 text-center text-sm text-ink-soft">
+          No hay {tab === "floor" ? "plantas" : "habitaciones"} disponibles.
+        </p>
+      ) : (
+        <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+          {list.map((item) => (
+            <PickRow
+              key={item.id}
+              title={item.name}
+              subtitle={tab === "floor" ? "Toda la planta" : "Habitación"}
+              onClick={() => onCreate(tab, item.id, item.name)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

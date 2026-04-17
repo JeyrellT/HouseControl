@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Camera, Circle, Maximize2, Wifi, WifiOff, X } from "lucide-react";
+import { Camera, Circle, Maximize2, Wifi, WifiOff, X, EyeOff } from "lucide-react";
 import { YouTubeFeed, LiveClock } from "./CameraFeed";
+import { CameraSecurityBar } from "./CameraSecurityBar";
 import type { Device } from "@/lib/types";
 import { STATIC } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -16,19 +17,17 @@ export function CameraWidget({
   interactive: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [recording, setRecording] = useState(true);
+  const [privacy, setPrivacy] = useState(false);
   const room = STATIC.rooms.find((r) => r.id === device.roomId);
   const isOnline = device.availability === "online";
 
   return (
     <>
-      <motion.button
-        type="button"
+      <motion.div
         layoutId={`home-cam-${device.id}`}
-        onClick={() => interactive && isOnline && setExpanded(true)}
-        disabled={!interactive || !isOnline}
         className={cn(
           "relative block h-full w-full overflow-hidden rounded-2xl bg-[#0a0e1a] border border-white/10 text-left",
-          interactive && isOnline && "cursor-pointer",
           "shadow-[0_4px_24px_-4px_rgba(0,0,0,0.5)]",
         )}
       >
@@ -72,15 +71,20 @@ export function CameraWidget({
             </div>
           </div>
           {interactive && isOnline && (
-            <div className="p-1.5 rounded bg-white/10 text-white/70 opacity-0 group-hover:opacity-100 transition">
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="p-1.5 rounded bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition"
+              aria-label="Expandir cámara"
+            >
               <Maximize2 className="h-3 w-3" />
-            </div>
+            </button>
           )}
         </div>
 
         {/* Bottom overlay */}
-        <div className="absolute bottom-0 inset-x-0 z-[3] p-2.5 sm:p-3 flex items-end justify-between bg-gradient-to-t from-black/70 via-black/20 to-transparent">
-          {isOnline && (
+        <div className="absolute bottom-0 inset-x-0 z-[3] p-2.5 sm:p-3 flex items-end justify-between bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none">
+          {isOnline && recording && (
             <div className="flex items-center gap-1 text-white/70">
               <motion.div
                 animate={{ opacity: [0.5, 1, 0.5] }}
@@ -99,6 +103,32 @@ export function CameraWidget({
           </div>
         </div>
 
+        {/* Security CCTV bar (clickable, stops bubbling) */}
+        {isOnline && interactive && (
+          <CameraSecurityBar
+            cameraDevice={device}
+            recording={recording}
+            onRecordingChange={setRecording}
+            privacy={privacy}
+            onPrivacyChange={setPrivacy}
+          />
+        )}
+
+        {/* Privacy curtain over feed */}
+        <AnimatePresence>
+          {privacy && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-[4] bg-black/85 flex items-center justify-center text-white/70 text-xs font-medium pointer-events-none"
+            >
+              <EyeOff className="h-5 w-5 mr-2" />
+              Privacidad activa
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Offline overlay */}
         {!isOnline && (
           <div className="absolute inset-0 z-[4] bg-black/70 flex flex-col items-center justify-center text-white/60">
@@ -106,7 +136,7 @@ export function CameraWidget({
             <span className="text-xs">Sin señal</span>
           </div>
         )}
-      </motion.button>
+      </motion.div>
 
       {/* Expanded modal */}
       <AnimatePresence>
@@ -143,6 +173,28 @@ export function CameraWidget({
                     <X className="h-5 w-5" />
                   </button>
                 </div>
+                {/* Security bar in expanded view */}
+                <CameraSecurityBar
+                  cameraDevice={device}
+                  expanded
+                  recording={recording}
+                  onRecordingChange={setRecording}
+                  privacy={privacy}
+                  onPrivacyChange={setPrivacy}
+                />
+                <AnimatePresence>
+                  {privacy && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 z-[4] bg-black/90 flex items-center justify-center text-white/80 text-sm font-medium pointer-events-none"
+                    >
+                      <EyeOff className="h-6 w-6 mr-2" />
+                      Privacidad activa
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </motion.div>
           </motion.div>
