@@ -137,7 +137,27 @@ export function ControlHubWidget({
           {scope === "floor" ? <Building className="h-4 w-4" /> : <Sofa className="h-4 w-4" />}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] uppercase tracking-wider text-ink-soft">Centro de control</p>
+          <p className="text-[10px] uppercase tracking-wider text-ink-soft flex items-center gap-1">
+            <span>Centro de control</span>
+            {scope === "room" && (() => {
+              const room = personaRooms.find((r) => r.id === targetId);
+              const floor = room ? personaFloors.find((f) => f.id === room.floorId) : undefined;
+              if (!floor) return null;
+              return (
+                <>
+                  <span aria-hidden>·</span>
+                  <button
+                    type="button"
+                    onClick={() => interactive && patch({ scope: "floor", targetId: floor.id, selectedDeviceIds: [] })}
+                    disabled={!interactive}
+                    className="hover:text-gold-border underline decoration-dotted"
+                  >
+                    {floor.name}
+                  </button>
+                </>
+              );
+            })()}
+          </p>
           <p className="text-sm font-semibold truncate">{targetName}</p>
         </div>
         <button
@@ -166,14 +186,14 @@ export function ControlHubWidget({
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
-            className="overflow-hidden mb-2"
+            className="overflow-hidden mb-2 space-y-1.5"
           >
-            <div className="flex gap-1 p-1 rounded-lg bg-surface-2 border border-line mb-1.5">
+            <div className="flex gap-1 p-1 rounded-lg bg-surface-2 border border-line">
               <button
                 type="button"
                 onClick={() => setScope("floor")}
                 className={cn(
-                  "flex-1 h-8 rounded-md text-[10px] font-medium inline-flex items-center justify-center gap-1 transition",
+                  "flex-1 h-7 rounded-md text-[10px] font-medium inline-flex items-center justify-center gap-1 transition",
                   scope === "floor" ? "bg-gold text-navy" : "text-ink-soft hover:bg-line/40",
                 )}
                 aria-pressed={scope === "floor"}
@@ -185,7 +205,7 @@ export function ControlHubWidget({
                 type="button"
                 onClick={() => setScope("room")}
                 className={cn(
-                  "flex-1 h-8 rounded-md text-[10px] font-medium inline-flex items-center justify-center gap-1 transition",
+                  "flex-1 h-7 rounded-md text-[10px] font-medium inline-flex items-center justify-center gap-1 transition",
                   scope === "room" ? "bg-gold text-navy" : "text-ink-soft hover:bg-line/40",
                 )}
                 aria-pressed={scope === "room"}
@@ -194,20 +214,55 @@ export function ControlHubWidget({
                 Habitación
               </button>
             </div>
-            <select
-              value={targetId}
-              onChange={(e) => setTarget(e.target.value)}
-              className="w-full h-9 px-2 rounded-lg text-xs bg-surface border border-line text-ink"
-              aria-label={scope === "floor" ? "Elegir planta" : "Elegir habitación"}
-            >
-              {(scope === "floor" ? personaFloors : personaRooms).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
 
-            <div className="mt-2 flex items-center justify-between">
+            {/* Primary chip row: floors or rooms depending on scope */}
+            <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+              {(scope === "floor" ? personaFloors : personaRooms).map((item) => {
+                const active = item.id === targetId;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setTarget(item.id)}
+                    className={cn(
+                      "shrink-0 px-2 h-7 rounded-md text-[10px] font-medium border transition whitespace-nowrap",
+                      active
+                        ? "bg-gold text-navy border-gold"
+                        : "bg-surface border-line text-ink-soft hover:border-gold-border/40",
+                    )}
+                    aria-pressed={active}
+                  >
+                    {item.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Secondary row when scope=floor: rooms within current floor (drill-down) */}
+            {scope === "floor" && (() => {
+              const roomsInFloor = personaRooms.filter((r) => r.floorId === targetId);
+              if (roomsInFloor.length === 0) return null;
+              return (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+                  <span className="shrink-0 text-[9px] uppercase tracking-wider text-ink-soft pl-1">
+                    Acotar →
+                  </span>
+                  {roomsInFloor.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => patch({ scope: "room", targetId: r.id, selectedDeviceIds: [] })}
+                      className="shrink-0 px-2 h-6 rounded-md text-[10px] border border-dashed border-line text-ink-soft hover:border-gold-border hover:text-ink whitespace-nowrap inline-flex items-center gap-1"
+                    >
+                      <Sofa className="h-2.5 w-2.5" />
+                      {r.name}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+
+            <div className="flex items-center justify-between pt-0.5">
               <span className="text-[10px] text-ink-soft uppercase tracking-wider">Mostrar seguridad</span>
               <button
                 type="button"
