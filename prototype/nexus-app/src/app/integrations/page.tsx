@@ -13,7 +13,9 @@ import {
   Cloud, Wifi, Radio, Bluetooth, Network, Server, KeyRound,
   Activity as ActivityIcon, Zap, ChevronDown, Plug, CircleDot,
   ShieldCheck, AlertTriangle, Signal, Gauge, Share2, Rocket,
+  Settings, Eye, EyeOff, Copy, CheckCircle2, X, ExternalLink, Globe, Lock, Shield,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // ---------- Config visual por vendor ----------
 type VendorVisual = {
@@ -93,6 +95,309 @@ function oauthUrgency(days: number | null): { tone: "ok" | "warn" | "critical"; 
   if (days < 7) return { tone: "critical", label: `${days}d` };
   if (days < 30) return { tone: "warn", label: `${days}d` };
   return { tone: "ok", label: `${days}d` };
+}
+
+// ---------- Credenciales demo por vendor ----------
+type VendorCredentials = {
+  endpoint: string;
+  apiKey: string;
+  username: string;
+  password: string;
+  clientId?: string;
+  clientSecret?: string;
+  region?: string;
+  protocol?: string;
+  notes?: string;
+};
+
+const DEMO_CREDENTIALS: Record<string, VendorCredentials> = {
+  tuya: {
+    endpoint: "https://openapi.tuyaus.com",
+    apiKey: "tuya_ak_f8c2e91d4a7b3c5e",
+    username: "admin@villa-aurora.io",
+    password: "Tuya$ecure2024!",
+    clientId: "txkwp8n5rjhvd3f7eq42",
+    clientSecret: "d7f9a1b3c5e8024f6a8b1c3d5e7f9a0b",
+    region: "us-west-1",
+    protocol: "HTTPS / MQTT",
+    notes: "Cloud API v2.0 — refresco de token cada 2h automático.",
+  },
+  smartthings: {
+    endpoint: "https://api.smartthings.com/v1",
+    apiKey: "st-pat-k7m2n9p4q6r1s8t3u5v0w",
+    username: "nexus-hub@villa-aurora.io",
+    password: "SmartT#Hub2024",
+    clientId: "aef7c2d1-4b8a-4e3f-9a1c-6d5e8f7b2a0c",
+    clientSecret: "c0a9b8d7e6f5-4321-8765-abcdef012345",
+    region: "NA",
+    protocol: "REST / Zigbee / Z-Wave",
+    notes: "PAT con scope devices:*, scenes:*. Hub v45.12 firmware.",
+  },
+  ubiquiti: {
+    endpoint: "https://192.168.1.10:7443",
+    apiKey: "unifi_api_a3b7c9d2e4f6",
+    username: "unifi-admin",
+    password: "Un1f1Protect@2024!",
+    region: "Local LAN",
+    protocol: "HTTPS / RTSP",
+    notes: "UniFi OS 3.x. RTSP streams en puerto 7447. SSL auto-firmado.",
+  },
+  crestron: {
+    endpoint: "https://192.168.1.50:41794",
+    apiKey: "crestron_xio_9f8e7d6c5b4a",
+    username: "crestron-master",
+    password: "Cre$tron!2024Pro",
+    clientId: "nexus-crestron-bridge",
+    protocol: "CIP / REST",
+    notes: "Procesador CP4N. Puerto CIP 41794. Auto-discovery activo.",
+  },
+  rainbird: {
+    endpoint: "https://api.rainbird.com/v2",
+    apiKey: "rb_live_m4n7p2q9r1s6t8",
+    username: "garden@villa-aurora.io",
+    password: "Ra1nB!rd2024",
+    clientId: "rb-nexus-integration",
+    clientSecret: "e5f6a7b8c9d0-1234-5678-9abcdef01234",
+    region: "US-Central",
+    protocol: "REST / Wi-Fi",
+    notes: "ESP-TM2 8 zonas. Sensor lluvia activo. Flow sensor instalado.",
+  },
+  sonos: {
+    endpoint: "https://api.ws.sonos.com/control/api/v1",
+    apiKey: "sonos_ak_b2c4d6e8f0a1",
+    username: "media@villa-aurora.io",
+    password: "Son0s!Audio2024",
+    clientId: "sonos-nexus-app-id",
+    clientSecret: "a1b2c3d4e5f6-7890-abcd-ef0123456789",
+    protocol: "REST / SMAPI",
+    notes: "Household con 6 speakers. Agrupación dinámica. S2 firmware.",
+  },
+};
+
+// ---------- Fila de credencial con copy + reveal ----------
+function CredentialRow({
+  label,
+  value,
+  sensitive = false,
+  icon: Icon,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  sensitive?: boolean;
+  icon: typeof KeyRound;
+  mono?: boolean;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const display = sensitive && !revealed ? "•".repeat(Math.min(value.length, 20)) : value;
+
+  return (
+    <div className="flex items-center gap-3 group py-2.5 px-3 rounded-xl hover:bg-surface transition">
+      <div className="w-8 h-8 rounded-lg bg-surface-2 flex items-center justify-center shrink-0">
+        <Icon className="h-3.5 w-3.5 text-ink-soft" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] text-ink-soft uppercase tracking-wider">{label}</p>
+        <p className={cn(
+          "text-sm truncate",
+          mono && "font-mono text-xs",
+          sensitive && !revealed && "text-ink-soft select-none",
+        )}>
+          {display}
+        </p>
+      </div>
+      <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition shrink-0">
+        {sensitive && (
+          <button
+            onClick={() => setRevealed(!revealed)}
+            className="p-2 sm:p-1.5 rounded-lg hover:bg-surface-2 transition text-ink-soft hover:text-ink"
+            title={revealed ? "Ocultar" : "Mostrar"}
+          >
+            {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </button>
+        )}
+        <button
+          onClick={handleCopy}
+          className="p-2 sm:p-1.5 rounded-lg hover:bg-surface-2 transition text-ink-soft hover:text-ink"
+          title="Copiar"
+        >
+          {copied ? (
+            <CheckCircle2 className="h-3.5 w-3.5 text-status-ok" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Modal de configuración de plataforma ----------
+function PlatformConfigModal({
+  platform,
+  onClose,
+}: {
+  platform: Platform;
+  onClose: () => void;
+}) {
+  const visual = VENDOR_VISUALS[platform.vendor] ?? DEFAULT_VISUAL;
+  const creds = DEMO_CREDENTIALS[platform.vendor];
+  const online = platform.status === "online";
+  const days = daysUntil(platform.oauthExpiresAt);
+  const oauth = oauthUrgency(days);
+
+  if (!creds) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg max-h-[85vh] sm:max-h-[90vh] rounded-t-2xl sm:rounded-2xl bg-surface-2 border border-line shadow-2xl overflow-hidden flex flex-col"
+      >
+        {/* Header con gradient */}
+        <div className={`relative bg-gradient-to-r ${visual.gradient} p-4 sm:p-5`}>
+          <div className="absolute inset-0 bg-black/20" />
+          <div className="relative flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center text-white shadow-lg">
+                <Cloud className="h-5 w-5" />
+              </div>
+              <div className="text-white">
+                <h2 className="font-display text-xl">{visual.label}</h2>
+                <p className="text-white/70 text-xs">{visual.tagline}</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="relative flex items-center gap-2 mt-3">
+            <Badge tone={online ? "ok" : "critical"}>
+              {online ? "Conectado" : "Desconectado"}
+            </Badge>
+            <Badge tone={oauth.tone}>OAuth {oauth.label}</Badge>
+            {platform.quotaRemaining !== undefined && (
+              <Badge tone="sage">Cuota: {platform.quotaRemaining.toLocaleString()}</Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Body scrollable */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+          {/* Conexión */}
+          <div>
+            <h3 className="text-[10px] uppercase tracking-widest text-ink-soft mb-1 flex items-center gap-1.5">
+              <Globe className="h-3 w-3" />
+              Conexión
+            </h3>
+            <div className="rounded-xl border border-line divide-y divide-line">
+              <CredentialRow label="Endpoint" value={creds.endpoint} icon={ExternalLink} mono />
+              {creds.region && (
+                <CredentialRow label="Región" value={creds.region} icon={Globe} />
+              )}
+              {creds.protocol && (
+                <CredentialRow label="Protocolo" value={creds.protocol} icon={Wifi} />
+              )}
+            </div>
+          </div>
+
+          {/* Autenticación */}
+          <div>
+            <h3 className="text-[10px] uppercase tracking-widest text-ink-soft mb-1 flex items-center gap-1.5">
+              <Lock className="h-3 w-3" />
+              Autenticación
+            </h3>
+            <div className="rounded-xl border border-line divide-y divide-line">
+              <CredentialRow label="Usuario" value={creds.username} icon={Settings} mono />
+              <CredentialRow label="Contraseña" value={creds.password} icon={KeyRound} sensitive mono />
+              <CredentialRow label="API Key" value={creds.apiKey} icon={KeyRound} sensitive mono />
+              {creds.clientId && (
+                <CredentialRow label="Client ID" value={creds.clientId} icon={Shield} mono />
+              )}
+              {creds.clientSecret && (
+                <CredentialRow label="Client Secret" value={creds.clientSecret} icon={Shield} sensitive mono />
+              )}
+            </div>
+          </div>
+
+          {/* Métricas */}
+          <div>
+            <h3 className="text-[10px] uppercase tracking-widest text-ink-soft mb-1 flex items-center gap-1.5">
+              <ActivityIcon className="h-3 w-3" />
+              Métricas
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl border border-line p-2 sm:p-3 text-center">
+                <p className="text-[10px] text-ink-soft uppercase">Latencia</p>
+                <p className="text-base sm:text-lg font-bold tabular-nums" style={{ color: latencyTone(platform.latencyMs).color }}>
+                  {platform.latencyMs}<span className="text-xs text-ink-soft ml-0.5">ms</span>
+                </p>
+              </div>
+              <div className="rounded-xl border border-line p-2 sm:p-3 text-center">
+                <p className="text-[10px] text-ink-soft uppercase">Dispositivos</p>
+                <p className="text-base sm:text-lg font-bold tabular-nums" style={{ color: visual.accent }}>
+                  {platform.devicesDiscovered}
+                </p>
+              </div>
+              <div className="rounded-xl border border-line p-2 sm:p-3 text-center">
+                <p className="text-[10px] text-ink-soft uppercase">Estado</p>
+                <p className="text-base sm:text-lg">
+                  {online ? "🟢" : "🔴"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Notas */}
+          {creds.notes && (
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-gold/5 border border-gold-border/20 text-xs text-ink-soft">
+              <AlertTriangle className="h-4 w-4 text-gold-border shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-ink text-[11px]">Notas de configuración</p>
+                <p className="mt-0.5">{creds.notes}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3.5 border-t border-line flex items-center justify-between bg-surface/50">
+          <p className="text-[10px] text-ink-soft flex items-center gap-1">
+            <Lock className="h-3 w-3" />
+            Credenciales de demostración
+          </p>
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 rounded-lg text-sm font-medium bg-navy text-cream hover:bg-navy-soft transition"
+          >
+            Cerrar
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
 }
 
 // ---------- Anillo SVG animado de cuota ----------
@@ -250,7 +555,7 @@ function ProtocolDistribution({ devices }: { devices: Device[] }) {
 
 // ---------- Platform card (todo junto + expand) ----------
 function PlatformCard({
-  platform, inSite, devices, activityCount, expanded, onToggle, index,
+  platform, inSite, devices, activityCount, expanded, onToggle, onConfigure, index,
 }: {
   platform: Platform;
   inSite: number;
@@ -258,6 +563,7 @@ function PlatformCard({
   activityCount: number;
   expanded: boolean;
   onToggle: () => void;
+  onConfigure: () => void;
   index: number;
 }) {
   const visual = VENDOR_VISUALS[platform.vendor] ?? DEFAULT_VISUAL;
@@ -308,20 +614,20 @@ function PlatformCard({
         <div className="mt-4 space-y-3">
           <LatencyBar ms={platform.latencyMs} />
 
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className={`rounded-lg ${visual.soft} p-2`}>
-              <div className="text-[10px] text-ink-soft uppercase tracking-wide">Descubiertos</div>
-              <div className="text-lg font-bold tabular-nums" style={{ color: visual.accent }}>
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-center">
+            <div className={`rounded-lg ${visual.soft} p-1.5 sm:p-2`}>
+              <div className="text-[9px] sm:text-[10px] text-ink-soft uppercase tracking-wide">Descubiertos</div>
+              <div className="text-base sm:text-lg font-bold tabular-nums" style={{ color: visual.accent }}>
                 {platform.devicesDiscovered}
               </div>
             </div>
-            <div className="rounded-lg bg-surface p-2">
-              <div className="text-[10px] text-ink-soft uppercase tracking-wide">En sitio</div>
-              <div className="text-lg font-bold tabular-nums text-ink">{inSite}</div>
+            <div className="rounded-lg bg-surface p-1.5 sm:p-2">
+              <div className="text-[9px] sm:text-[10px] text-ink-soft uppercase tracking-wide">En sitio</div>
+              <div className="text-base sm:text-lg font-bold tabular-nums text-ink">{inSite}</div>
             </div>
-            <div className="rounded-lg bg-surface p-2">
-              <div className="text-[10px] text-ink-soft uppercase tracking-wide">Eventos hoy</div>
-              <div className="text-lg font-bold tabular-nums text-ink">{activityCount}</div>
+            <div className="rounded-lg bg-surface p-1.5 sm:p-2">
+              <div className="text-[9px] sm:text-[10px] text-ink-soft uppercase tracking-wide">Eventos hoy</div>
+              <div className="text-base sm:text-lg font-bold tabular-nums text-ink">{activityCount}</div>
             </div>
           </div>
 
@@ -338,6 +644,18 @@ function PlatformCard({
               </div>
             )}
           </div>
+
+          {/* Botón configurar */}
+          <button
+            onClick={onConfigure}
+            className={cn(
+              "w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition",
+              "border border-line hover:border-gold-border/40 bg-surface hover:bg-gold/5 text-ink-soft hover:text-ink",
+            )}
+          >
+            <Settings className="h-3.5 w-3.5" />
+            Configurar
+          </button>
         </div>
 
         {/* Expandable detail */}
@@ -485,6 +803,7 @@ export default function IntegrationsPage() {
   const gateways = selectGatewaysByPersona(personaId);
   const activity = useNexus((s) => selectActivityByPersona(personaId, s.activity));
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [configPlatform, setConfigPlatform] = useState<Platform | null>(null);
 
   const vendorsInSite = useMemo(() => {
     return devices.reduce<Record<string, number>>((acc, d) => {
@@ -533,7 +852,7 @@ export default function IntegrationsPage() {
             <div className="flex items-center gap-2 text-cream/60 text-xs uppercase tracking-widest">
               <Share2 className="h-3 w-3" /> Integraciones
             </div>
-            <h1 className="font-display text-3xl text-cream mt-1">Red y adapters</h1>
+            <h1 className="font-display text-xl sm:text-3xl text-cream mt-1">Red y adapters</h1>
             <p className="text-cream/70 text-sm mt-1 max-w-xl">
               Plataformas externas, gateways locales y topología de protocolos conectados al núcleo Nexus.
             </p>
@@ -613,6 +932,7 @@ export default function IntegrationsPage() {
               activityCount={activityByVendor[p.vendor] ?? 0}
               expanded={expandedId === p.id}
               onToggle={() => setExpandedId((prev) => (prev === p.id ? null : p.id))}
+              onConfigure={() => setConfigPlatform(p)}
               index={i}
             />
           ))}
@@ -682,6 +1002,16 @@ export default function IntegrationsPage() {
           )}
         </CardBody>
       </Card>
+
+      {/* Modal de configuración */}
+      <AnimatePresence>
+        {configPlatform && (
+          <PlatformConfigModal
+            platform={configPlatform}
+            onClose={() => setConfigPlatform(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

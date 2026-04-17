@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, Layers, Mic, GitBranch, ScrollText, Settings,
-  ChevronLeft, ChevronRight, MapPin, Activity, Plug, Sparkles, BarChart3, Bell,
+  ChevronLeft, ChevronRight, MapPin, Activity, Plug, Sparkles, BarChart3, Bell, Camera, UserCircle,
 } from "lucide-react";
 import { useNexus } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: Home },
   { href: "/rooms", label: "Habitaciones", icon: MapPin },
   { href: "/devices", label: "Dispositivos", icon: Plug },
+  { href: "/cameras", label: "Cámaras", icon: Camera },
   { href: "/scenes", label: "Escenas", icon: Sparkles },
   { href: "/voice", label: "Voz e IA", icon: Mic },
   { href: "/rules", label: "Reglas", icon: GitBranch },
@@ -21,6 +22,7 @@ const NAV = [
   { href: "/energy", label: "Energía", icon: BarChart3 },
   { href: "/audit", label: "Auditoría", icon: ScrollText },
   { href: "/integrations", label: "Integraciones", icon: Layers },
+  { href: "/profile", label: "Perfil", icon: UserCircle },
   { href: "/settings", label: "Ajustes", icon: Settings },
 ];
 

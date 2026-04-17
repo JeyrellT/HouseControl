@@ -56,13 +56,13 @@ export function Topbar() {
 
   return (
     <header
-      className="h-16 border-b border-line bg-surface px-3 md:px-6 flex items-center gap-2 md:gap-3 sticky top-0 z-30 backdrop-blur"
+      className="h-16 border-b border-line bg-surface/85 px-3 md:px-6 flex items-center gap-2 md:gap-3 sticky top-0 z-30 backdrop-blur-xl backdrop-saturate-150"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
       {/* Mobile hamburger */}
       <button
         onClick={() => setMobileNavOpen(true)}
-        className="md:hidden p-2 -ml-1 rounded-lg hover:bg-surface-2 text-ink-soft transition"
+        className="md:hidden p-2 -ml-1 rounded-lg hover:bg-surface-2 active:scale-90 text-ink-soft transition-all duration-150"
         aria-label="Abrir menú"
       >
         <Menu size={20} />
@@ -72,12 +72,15 @@ export function Topbar() {
       <div className="relative">
         <button
           onClick={() => setSiteOpen((o) => !o)}
-          className="flex items-center gap-2 px-2.5 md:px-3 py-2 rounded-lg bg-surface-2 hover:bg-line transition border border-line max-w-[52vw] md:max-w-none"
+          className="flex items-center gap-2 px-2.5 md:px-3 py-2 rounded-lg bg-surface-2 hover:bg-line active:scale-[0.97] transition-all duration-150 border border-line max-w-[52vw] md:max-w-none"
         >
-          <span className="w-2 h-2 rounded-full bg-status-ok flex-shrink-0" />
+          <span className="w-2 h-2 rounded-full bg-status-ok flex-shrink-0 shadow-[0_0_0_3px_rgba(91,179,127,0.18)]" />
           <span className="font-medium text-sm truncate">{persona.name}</span>
           <span className="text-xs text-ink-soft hidden sm:inline">· {persona.location}</span>
-          <ChevronDown size={14} className="text-ink-soft flex-shrink-0" />
+          <ChevronDown
+            size={14}
+            className={cn("text-ink-soft flex-shrink-0 transition-transform duration-200", siteOpen && "rotate-180")}
+          />
         </button>
         {siteOpen && (
           <>

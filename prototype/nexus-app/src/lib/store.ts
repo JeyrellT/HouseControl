@@ -30,6 +30,41 @@ import { toast } from "./toast-store";
 
 type Role = "owner" | "admin" | "technician" | "viewer";
 
+export interface OwnerProfile {
+  displayName: string;
+  email: string;
+  phone: string;
+  bio: string;
+  avatarEmoji: string;
+  // Contexto que la IA usará al responder
+  aiContext: {
+    preferredName: string;
+    lifestyle: string;
+    schedule: string;
+    preferences: string;
+    specialNotes: string;
+    communicationStyle: "formal" | "casual" | "technical";
+    language: string;
+  };
+}
+
+const DEFAULT_PROFILE: OwnerProfile = {
+  displayName: "",
+  email: "",
+  phone: "",
+  bio: "",
+  avatarEmoji: "🏠",
+  aiContext: {
+    preferredName: "",
+    lifestyle: "",
+    schedule: "",
+    preferences: "",
+    specialNotes: "",
+    communicationStyle: "casual",
+    language: "es",
+  },
+};
+
 interface NexusStore {
   // ----- Sitio activo -----
   activePersonaId: PersonaId;
@@ -54,6 +89,11 @@ interface NexusStore {
   geminiModel: string;
   setGeminiApiKey: (k: string) => void;
   setGeminiModel: (m: string) => void;
+
+  // ----- Perfil del propietario -----
+  ownerProfile: OwnerProfile;
+  updateOwnerProfile: (patch: Partial<OwnerProfile>) => void;
+  updateAIContext: (patch: Partial<OwnerProfile["aiContext"]>) => void;
 
   // ----- Estado en vivo (capabilities mutables) -----
   capabilities: Record<string, Capability>;
@@ -104,6 +144,17 @@ export const useNexus = create<NexusStore>()(
       geminiModel: "gemini-2.5-flash",
       setGeminiApiKey: (k) => set({ geminiApiKey: k }),
       setGeminiModel: (m) => set({ geminiModel: m }),
+
+      ownerProfile: DEFAULT_PROFILE,
+      updateOwnerProfile: (patch) =>
+        set((s) => ({ ownerProfile: { ...s.ownerProfile, ...patch } })),
+      updateAIContext: (patch) =>
+        set((s) => ({
+          ownerProfile: {
+            ...s.ownerProfile,
+            aiContext: { ...s.ownerProfile.aiContext, ...patch },
+          },
+        })),
 
       userScenes: [],
       deletedSeedSceneIds: [],
@@ -260,6 +311,7 @@ export const useNexus = create<NexusStore>()(
         activeRole: state.activeRole,
         geminiApiKey: state.geminiApiKey,
         geminiModel: state.geminiModel,
+        ownerProfile: state.ownerProfile,
         userScenes: state.userScenes,
         deletedSeedSceneIds: state.deletedSeedSceneIds,
       }),

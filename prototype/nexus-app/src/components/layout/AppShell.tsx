@@ -29,7 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <Topbar />
         <main
-          className="flex-1 px-3 sm:px-4 md:px-8 py-4 md:py-6 max-w-[1600px] w-full mx-auto pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-6"
+          className="flex-1 px-4 sm:px-5 md:px-8 py-4 md:py-6 max-w-[1600px] w-full mx-auto pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6 anim-fade-in-up"
         >
           {children}
         </main>

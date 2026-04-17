@@ -407,3 +407,96 @@ Reglas:
   }
   return parsed;
 }
+
+// ---------- Audit analysis (chat-style Q&A over activity events) ----------
+
+export interface AuditInsight {
+  answer: string;                // respuesta principal en español (1-6 frases)
+  relatedEventIds: string[];     // IDs de eventos relevantes del array proporcionado
+  pattern?: string;              // patrón detectado, si lo hay (opcional)
+  followUpQuestions: string[];   // sugerencias de preguntas de follow-up (2-4)
+}
+
+export async function analyzeAudit(params: {
+  apiKey: string;
+  model: string;
+  question: string;
+  events: Array<{
+    id: string;
+    ts: string;
+    actor: string;
+    intent: string;
+    target?: string;
+    outcome: string;
+    severity?: string;
+    source: string;
+    summary: string;
+  }>;
+  history?: Array<{ role: "user" | "assistant"; text: string }>;
+}): Promise<AuditInsight> {
+  const { apiKey, model, question, events, history = [] } = params;
+  if (!apiKey) throw new Error("Falta la API key de Gemini. Configúrala en Ajustes.");
+
+  const systemPrompt = `Eres un analista senior de operaciones y seguridad para un hogar inteligente en Costa Rica.
+Analizas la bitácora de eventos (auditoría) y respondes preguntas del usuario en español.
+
+Devuelve SIEMPRE un JSON con esta forma exacta:
+{
+  "answer": "respuesta clara y concisa en español (1-6 frases). Usa datos concretos del log. Si detectas algo importante, menciónalo.",
+  "relatedEventIds": ["id-1", "id-2"],
+  "pattern": "patrón detectado si la pregunta lo amerita, o null",
+  "followUpQuestions": ["pregunta sugerida 1", "pregunta sugerida 2"]
+}
+
+Reglas:
+- Español natural, tono profesional pero accesible
+- "relatedEventIds" DEBE contener SOLO ids que existan en el log proporcionado
+- Si el usuario pregunta por un evento específico, incluye su id en relatedEventIds
+- Si el usuario pide un resumen o análisis de patrones, incluye los ids más relevantes (máx 10)
+- "followUpQuestions" debe sugerir 2-4 preguntas naturales relacionadas con lo que acabas de responder
+- Si no hay suficiente información para responder, dilo honestamente pero sugiere qué datos ayudarían
+- NO inventes eventos ni datos que no estén en el log
+- Menciona timestamps y detalles concretos cuando sean relevantes`;
+
+  const userPrompt = [
+    `Bitácora de eventos (${events.length} registros):\n${JSON.stringify(events)}`,
+    history.length
+      ? `Conversación previa:\n${history.map((h) => `${h.role}: ${h.text}`).join("\n")}`
+      : "",
+    `Pregunta del usuario: "${question}"`,
+  ].filter(Boolean).join("\n\n");
+
+  const body = {
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: "user", parts: [{ text: userPrompt }] }] as GeminiContent[],
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.4,
+    },
+  };
+
+  const url = `${BASE}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gemini ${res.status}: ${text.slice(0, 300)}`);
+  }
+  const data: GeminiResponse = await res.json();
+  if (data.error) throw new Error(`Gemini: ${data.error.message}`);
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Respuesta vacía de Gemini");
+  let parsed: AuditInsight;
+  try { parsed = JSON.parse(text); } catch { throw new Error("Gemini devolvió JSON inválido"); }
+
+  // Sanitización
+  const validEventIds = new Set(events.map((e) => e.id));
+  parsed.answer = (parsed.answer ?? "").slice(0, 2000);
+  parsed.relatedEventIds = (parsed.relatedEventIds ?? []).filter((id) => validEventIds.has(id)).slice(0, 10);
+  parsed.followUpQuestions = (parsed.followUpQuestions ?? []).slice(0, 4);
+  if (parsed.pattern && typeof parsed.pattern !== "string") parsed.pattern = undefined;
+  return parsed;
+}
