@@ -30,6 +30,16 @@ const ROW_SPAN: Record<WidgetSize, string> = {
   XL: "row-span-2",
 };
 
+/** ControlHub always occupies full width + 3 rows regardless of stored size. */
+function widgetColClass(w: HomeWidget): string {
+  if (w.type === "controlHub") return "col-span-4 md:col-span-8 xl:col-span-8";
+  return COL_SPAN[w.size];
+}
+function widgetRowClass(w: HomeWidget): string {
+  if (w.type === "controlHub") return "row-span-3";
+  return ROW_SPAN[w.size];
+}
+
 const GREETING = (hour: number) => {
   if (hour < 6) return "Buenas noches";
   if (hour < 12) return "Buenos días";
@@ -196,15 +206,15 @@ export default function HomePage() {
             onReorder={(ordered) =>
               reorder(personaId, (ordered as HomeWidget[]).map((w) => w.id))
             }
-            className="grid grid-cols-4 md:grid-cols-8 xl:grid-cols-12 gap-3 sm:gap-4 auto-rows-[110px] sm:auto-rows-[130px]"
+            className="grid grid-cols-4 md:grid-cols-8 xl:grid-cols-12 gap-3 sm:gap-4 auto-rows-[120px] sm:auto-rows-[140px]"
           >
             {widgets.map((w) => (
               <Reorder.Item
                 key={w.id}
                 value={w}
                 className={cn(
-                  COL_SPAN[w.size],
-                  ROW_SPAN[w.size],
+                  widgetColClass(w),
+                  widgetRowClass(w),
                   "touch-none",
                 )}
                 transition={{ type: "spring", stiffness: 420, damping: 32 }}
@@ -224,7 +234,7 @@ export default function HomePage() {
         ) : (
           <motion.div
             layout
-            className="grid grid-cols-4 md:grid-cols-8 xl:grid-cols-12 gap-3 sm:gap-4 auto-rows-[110px] sm:auto-rows-[130px]"
+            className="grid grid-cols-4 md:grid-cols-8 xl:grid-cols-12 gap-3 sm:gap-4 auto-rows-[120px] sm:auto-rows-[140px]"
           >
             <AnimatePresence mode="popLayout">
               {widgets.map((w) => (
@@ -235,7 +245,7 @@ export default function HomePage() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ type: "spring", stiffness: 420, damping: 32 }}
-                  className={cn(COL_SPAN[w.size], ROW_SPAN[w.size])}
+                  className={cn(widgetColClass(w), widgetRowClass(w))}
                 >
                   <WidgetFrame
                     id={w.id}

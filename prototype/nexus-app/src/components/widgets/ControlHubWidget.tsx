@@ -351,9 +351,10 @@ export function ControlHubWidget({
       ) : (
         <DeviceList
           devices={selectedDevices}
+          fallbackDevices={zoneDevices}
           capabilities={capabilities}
           onToggle={(id) => interactive && toggleDevice(id)}
-          compact={compact}
+          size={size}
           interactive={interactive}
         />
       )}
@@ -363,18 +364,25 @@ export function ControlHubWidget({
 
 function DeviceList({
   devices,
+  fallbackDevices,
   capabilities,
   onToggle,
-  compact,
+  size,
   interactive,
 }: {
   devices: Device[];
+  fallbackDevices: Device[];
   capabilities: Record<string, Capability | undefined>;
   onToggle: (id: string) => void;
-  compact: boolean;
+  size: "S" | "M" | "L" | "XL";
   interactive: boolean;
 }) {
-  if (devices.length === 0) {
+  // If nothing was explicitly selected, fall back to all zone devices
+  const list = devices.length > 0 ? devices : fallbackDevices;
+  const isAutoMode = devices.length === 0 && fallbackDevices.length > 0;
+  const large = size === "L" || size === "XL";
+
+  if (list.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center text-xs text-ink-soft gap-2 py-3">
         <Plus className="h-5 w-5 opacity-40" />
@@ -385,62 +393,118 @@ function DeviceList({
       </div>
     );
   }
+
   return (
-    <div className="flex-1 overflow-y-auto -mx-1 px-1 space-y-1.5 min-h-0">
-      {devices.map((d) => {
-        const Icon = KIND_ICON[d.kind] ?? Lightbulb;
-        const lockable = d.kind === "lock";
-        // Toggleable if device has on_off OR is a lock with lock capability
-        const onCap = d.capabilityIds
-          .map((cid) => capabilities[cid])
-          .find((c) => c?.kind === "on_off" || (lockable && c?.kind === "lock"));
-        const isOn = lockable ? isDeviceLocked(d, capabilities) : Boolean(onCap?.value);
-        const labelOn = lockable ? "Cerrado" : "Encendido";
-        const labelOff = lockable ? "Abierto" : "Apagado";
-        return (
-          <button
-            key={d.id}
-            type="button"
-            onClick={() => onCap && onToggle(d.id)}
-            disabled={!interactive || !onCap}
-            className={cn(
-              "w-full h-10 px-2 rounded-lg border inline-flex items-center gap-2 text-xs transition text-left",
-              isOn
-                ? lockable
-                  ? "bg-emerald-500/10 border-emerald-500/40"
-                  : "bg-gold/15 border-gold-border/40"
-                : "bg-surface-2 border-line hover:border-gold-border/30",
-              !onCap && "opacity-50 cursor-not-allowed",
-            )}
-            aria-pressed={isOn}
-          >
-            <Icon
+    <div className="flex-1 min-h-0 flex flex-col gap-1">
+      {isAutoMode && (
+        <p className="text-[9px] uppercase tracking-wider text-ink-soft px-0.5">
+          Todos en la zona
+        </p>
+      )}
+      <div
+        className={cn(
+          "flex-1 overflow-y-auto -mx-1 px-1 min-h-0",
+          large ? "grid grid-cols-2 gap-1.5 content-start" : "space-y-1.5",
+        )}
+      >
+        {list.map((d) => {
+          const Icon = KIND_ICON[d.kind] ?? Lightbulb;
+          const lockable = d.kind === "lock";
+          const onCap = d.capabilityIds
+            .map((cid) => capabilities[cid])
+            .find((c) => c?.kind === "on_off" || (lockable && c?.kind === "lock"));
+          const isOn = lockable ? isDeviceLocked(d, capabilities) : Boolean(onCap?.value);
+          const labelOn = lockable ? "Cerrado" : "Enc.";
+          const labelOff = lockable ? "Abierto" : "Apag.";
+          return (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => onCap && onToggle(d.id)}
+              disabled={!interactive || !onCap}
               className={cn(
-                "h-3.5 w-3.5 shrink-0",
-                isOn ? (lockable ? "text-emerald-600 dark:text-emerald-300" : "text-gold-border") : "text-ink-soft",
+                "w-full rounded-xl border flex flex-col justify-between transition text-left p-2",
+                large ? "min-h-[60px]" : "h-10 flex-row items-center gap-2 px-2",
+                isOn
+                  ? lockable
+                    ? "bg-emerald-500/10 border-emerald-500/40"
+                    : "bg-gold/15 border-gold-border/40"
+                  : "bg-surface-2 border-line hover:border-gold-border/30",
+                !onCap && "opacity-50 cursor-not-allowed",
               )}
-            />
-            <span className="flex-1 truncate font-medium">{d.name}</span>
-            {!compact && onCap && (
-              <span className="text-[9px] uppercase tracking-wider text-ink-soft">
-                {isOn ? labelOn : labelOff}
-              </span>
-            )}
-            {onCap && (
-              <span
-                className={cn(
-                  "w-2 h-2 rounded-full shrink-0",
-                  isOn
-                    ? lockable
-                      ? "bg-emerald-500"
-                      : "bg-gold"
-                    : "bg-line",
-                )}
-              />
-            )}
-          </button>
-        );
-      })}
+              aria-pressed={isOn}
+            >
+              {large ? (
+                <>
+                  <div className="flex items-start justify-between gap-1">
+                    <Icon
+                      className={cn(
+                        "h-4 w-4 shrink-0 mt-0.5",
+                        isOn
+                          ? lockable
+                            ? "text-emerald-600 dark:text-emerald-300"
+                            : "text-gold-border"
+                          : "text-ink-soft",
+                      )}
+                    />
+                    {onCap && (
+                      <span
+                        className={cn(
+                          "w-2 h-2 rounded-full shrink-0 mt-1",
+                          isOn
+                            ? lockable
+                              ? "bg-emerald-500"
+                              : "bg-gold"
+                            : "bg-line",
+                        )}
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium leading-tight line-clamp-1">{d.name}</p>
+                    {onCap && (
+                      <p className="text-[10px] text-ink-soft mt-0.5">
+                        {isOn ? labelOn : labelOff}
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Icon
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0",
+                      isOn
+                        ? lockable
+                          ? "text-emerald-600 dark:text-emerald-300"
+                          : "text-gold-border"
+                        : "text-ink-soft",
+                    )}
+                  />
+                  <span className="flex-1 truncate text-xs font-medium">{d.name}</span>
+                  {onCap && (
+                    <span className="text-[9px] uppercase tracking-wider text-ink-soft">
+                      {isOn ? labelOn : labelOff}
+                    </span>
+                  )}
+                  {onCap && (
+                    <span
+                      className={cn(
+                        "w-2 h-2 rounded-full shrink-0",
+                        isOn
+                          ? lockable
+                            ? "bg-emerald-500"
+                            : "bg-gold"
+                          : "bg-line",
+                      )}
+                    />
+                  )}
+                </>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
