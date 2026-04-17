@@ -286,7 +286,16 @@ export type HomeWidget =
   | { id: string; type: "scene"; size: WidgetSize; sceneId: string }
   | { id: string; type: "climate"; size: WidgetSize; deviceId: string }
   | { id: string; type: "securityPanel"; size: WidgetSize }
-  | { id: string; type: "zone"; size: WidgetSize; scope: ZoneScope; targetId: string; name: string };
+  | { id: string; type: "zone"; size: WidgetSize; scope: ZoneScope; targetId: string; name: string }
+  | {
+      id: string;
+      type: "controlHub";
+      size: WidgetSize;
+      scope: ZoneScope;
+      targetId: string;
+      selectedDeviceIds: string[];
+      showSecurity: boolean;
+    };
 
 export type WidgetType = HomeWidget["type"];
 

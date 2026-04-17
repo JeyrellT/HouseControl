@@ -75,6 +75,8 @@ export default function HomePage() {
       case "zone":
         // Zone is highlighted if any of its devices are touched in this step.
         return false; // computed below per-render via scope check (kept simple here)
+      case "controlHub":
+        return w.selectedDeviceIds.some((id) => affectedIds.has(id));
       case "scene":
       case "securityPanel":
         return false;

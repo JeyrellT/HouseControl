@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Camera, Lightbulb, Tv, Sparkles, Thermometer, ChevronRight, Check,
-  Shield, LayoutGrid, Building, Sofa,
+  Shield, LayoutGrid, Building, Sofa, SlidersHorizontal,
 } from "lucide-react";
 import { useNexus, STATIC, selectDevicesByPersona, selectScenesByPersona } from "@/lib/store";
 import type { HomeWidget, PersonaId, WidgetType, Device } from "@/lib/types";
@@ -20,6 +20,7 @@ type Option = {
 
 const OPTIONS: Option[] = [
   { type: "camera", label: "Cámara", description: "Feed en vivo + controles de seguridad", Icon: Camera, defaultSize: "L" },
+  { type: "controlHub", label: "Centro de control", description: "Elige planta/habitación + dispositivos específicos", Icon: SlidersHorizontal, defaultSize: "L" },
   { type: "zone", label: "Zona", description: "Controla toda una habitación o planta", Icon: LayoutGrid, defaultSize: "M" },
   { type: "securityPanel", label: "Seguridad", description: "Modo de alarma + pánico", Icon: Shield, defaultSize: "M" },
   { type: "lightGroup", label: "Grupo de luces", description: "Controla varias luces juntas", Icon: Lightbulb, defaultSize: "M" },
@@ -273,6 +274,23 @@ export function AddWidgetModal({
                       scope,
                       targetId,
                       name,
+                    } as Omit<HomeWidget, "id">)
+                  }
+                />
+              )}
+
+              {step === "select" && chosen?.type === "controlHub" && (
+                <ZonePicker
+                  rooms={rooms.map((r) => ({ id: r.id, name: r.name }))}
+                  floors={floors.map((f) => ({ id: f.id, name: f.name }))}
+                  onCreate={(scope, targetId) =>
+                    commit({
+                      type: "controlHub",
+                      size: chosen.defaultSize,
+                      scope,
+                      targetId,
+                      selectedDeviceIds: [],
+                      showSecurity: true,
                     } as Omit<HomeWidget, "id">)
                   }
                 />

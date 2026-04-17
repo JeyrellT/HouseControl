@@ -10,6 +10,7 @@ import { SceneWidget } from "./SceneWidget";
 import { ClimateWidget } from "./ClimateWidget";
 import { ZoneWidget } from "./ZoneWidget";
 import { SecurityPanel } from "./SecurityPanel";
+import { ControlHubWidget } from "./ControlHubWidget";
 
 export { WidgetFrame } from "./WidgetFrame";
 export { CameraWidget } from "./CameraWidget";
@@ -19,6 +20,7 @@ export { SceneWidget } from "./SceneWidget";
 export { ClimateWidget } from "./ClimateWidget";
 export { ZoneWidget } from "./ZoneWidget";
 export { SecurityPanel } from "./SecurityPanel";
+export { ControlHubWidget } from "./ControlHubWidget";
 export { CameraSecurityBar } from "./CameraSecurityBar";
 export { AddWidgetModal } from "./AddWidgetModal";
 export { YouTubeFeed, LiveClock } from "./CameraFeed";
@@ -74,6 +76,18 @@ export function WidgetRenderer({
       );
     case "securityPanel":
       return <SecurityPanel interactive={interactive} size={widget.size} />;
+    case "controlHub":
+      return (
+        <ControlHubWidget
+          widgetId={widget.id}
+          scope={widget.scope}
+          targetId={widget.targetId}
+          selectedDeviceIds={widget.selectedDeviceIds}
+          showSecurity={widget.showSecurity}
+          size={widget.size}
+          interactive={interactive}
+        />
+      );
     default:
       return <MissingWidget label="Widget desconocido" />;
   }
