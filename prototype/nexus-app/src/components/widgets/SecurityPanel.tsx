@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import {
   Shield, ShieldOff, Home as HomeIcon, Plane, Moon, Lock, Activity, AlertTriangle,
 } from "lucide-react";
-import { useNexus, selectDevicesByPersona } from "@/lib/store";
+import { useNexus, selectDevicesByPersona, isDeviceLocked } from "@/lib/store";
 import type { AlarmMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -39,10 +39,7 @@ export function SecurityPanel({
 
   const devices = selectDevicesByPersona(personaId);
   const locks = devices.filter((d) => d.kind === "lock");
-  const lockedCount = locks.filter((d) => {
-    const onCap = d.capabilityIds.map((cid) => capabilities[cid]).find((c) => c?.kind === "on_off");
-    return Boolean(onCap?.value);
-  }).length;
+  const lockedCount = locks.filter((d) => isDeviceLocked(d, capabilities)).length;
   const motionDevices = devices.filter((d) => d.kind === "sensor");
   const motionActive = motionDevices.some((d) => {
     const motionCap = d.capabilityIds.map((cid) => capabilities[cid]).find((c) => c?.kind === "motion");

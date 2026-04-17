@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Camera, Lightbulb, Tv, Sparkles, Thermometer, ChevronRight, Check,
-  Shield, LayoutGrid, Building, Sofa, SlidersHorizontal,
+  Shield, Building, Sofa, SlidersHorizontal, Settings,
 } from "lucide-react";
 import { useNexus, STATIC, selectDevicesByPersona, selectScenesByPersona } from "@/lib/store";
 import type { HomeWidget, PersonaId, WidgetType, Device } from "@/lib/types";
@@ -19,9 +19,8 @@ type Option = {
 };
 
 const OPTIONS: Option[] = [
-  { type: "camera", label: "Cámara", description: "Feed en vivo + controles de seguridad", Icon: Camera, defaultSize: "L" },
   { type: "controlHub", label: "Centro de control", description: "Elige planta/habitación + dispositivos específicos", Icon: SlidersHorizontal, defaultSize: "L" },
-  { type: "zone", label: "Zona", description: "Controla toda una habitación o planta", Icon: LayoutGrid, defaultSize: "M" },
+  { type: "camera", label: "Cámara", description: "Feed en vivo + controles de seguridad", Icon: Camera, defaultSize: "L" },
   { type: "securityPanel", label: "Seguridad", description: "Modo de alarma + pánico", Icon: Shield, defaultSize: "M" },
   { type: "lightGroup", label: "Grupo de luces", description: "Controla varias luces juntas", Icon: Lightbulb, defaultSize: "M" },
   { type: "tv", label: "TV", description: "Control remoto táctil", Icon: Tv, defaultSize: "M" },
@@ -280,20 +279,30 @@ export function AddWidgetModal({
               )}
 
               {step === "select" && chosen?.type === "controlHub" && (
-                <ZonePicker
-                  rooms={rooms.map((r) => ({ id: r.id, name: r.name }))}
-                  floors={floors.map((f) => ({ id: f.id, name: f.name }))}
-                  onCreate={(scope, targetId) =>
-                    commit({
-                      type: "controlHub",
-                      size: chosen.defaultSize,
-                      scope,
-                      targetId,
-                      selectedDeviceIds: [],
-                      showSecurity: true,
-                    } as Omit<HomeWidget, "id">)
-                  }
-                />
+                <div className="p-4 space-y-3">
+                  <p className="text-sm text-ink-soft">
+                    El centro de control es totalmente configurable: una vez agregado podrás cambiar la planta, la habitación y elegir qué dispositivos mostrar desde el botón <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-2 border border-line text-[10px]"><Settings className="h-2.5 w-2.5" /> Configurar</span> del widget.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const defaultFloor = floors[0];
+                      if (!defaultFloor) return;
+                      commit({
+                        type: "controlHub",
+                        size: chosen.defaultSize,
+                        scope: "floor",
+                        targetId: defaultFloor.id,
+                        selectedDeviceIds: [],
+                        showSecurity: true,
+                      } as Omit<HomeWidget, "id">);
+                    }}
+                    disabled={floors.length === 0}
+                    className="w-full h-12 rounded-2xl bg-gold text-navy font-semibold disabled:opacity-50"
+                  >
+                    Agregar al canvas
+                  </button>
+                </div>
               )}
             </div>
           </motion.div>

@@ -6,7 +6,7 @@ import {
   Lock, Unlock, Siren, Shield, Home as HomeIcon, Plane, Moon, ShieldOff,
   Circle, EyeOff, Eye,
 } from "lucide-react";
-import { useNexus, STATIC } from "@/lib/store";
+import { useNexus, STATIC, isDeviceLocked } from "@/lib/store";
 import type { Device, AlarmMode } from "@/lib/types";
 import { cn } from "@/lib/utils";const MODE_META: Record<AlarmMode, { label: string; Icon: typeof Shield; ring: string }> = {
   home: { label: "Casa", Icon: HomeIcon, ring: "ring-emerald-400/70" },
@@ -62,12 +62,7 @@ export function CameraSecurityBar({
     return preferred ?? pool[0];
   }, [cameraDevice]);
 
-  const lockOnCap = nearestLock
-    ? nearestLock.capabilityIds
-        .map((cid) => capabilities[cid])
-        .find((c) => c?.kind === "on_off")
-    : undefined;
-  const lockLocked = Boolean(lockOnCap?.value);
+  const lockLocked = nearestLock ? isDeviceLocked(nearestLock, capabilities) : false;
 
   const sirenHoldRef = useRef<{ start: number; timer: ReturnType<typeof setTimeout> | null }>({
     start: 0,

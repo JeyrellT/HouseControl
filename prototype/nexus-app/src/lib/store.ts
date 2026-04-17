@@ -201,6 +201,24 @@ function matchLockFilter(device: Device, filter: "all" | "indoor" | "outdoor"): 
   return filter === "outdoor" ? isOutdoor : !isOutdoor;
 }
 
+/**
+ * Detect if a lock device is currently locked. Supports both seed conventions:
+ *  - capability kind "on_off" with boolean (true = locked)
+ *  - capability kind "lock" with string ("locked" / "unlocked")
+ */
+export function isDeviceLocked(
+  device: Device,
+  capabilities: Record<string, Capability | undefined>,
+): boolean {
+  for (const cid of device.capabilityIds) {
+    const c = capabilities[cid];
+    if (!c) continue;
+    if (c.kind === "on_off") return Boolean(c.value);
+    if (c.kind === "lock") return c.value === "locked";
+  }
+  return false;
+}
+
 function collectAffectedDeviceIds(action: MomentStepAction, personaDevices: Device[]): string[] {
   switch (action.kind) {
     case "lights":
@@ -299,10 +317,7 @@ function executeMomentAction(action: MomentStepAction, ctx: MomentExecCtx): void
       const targetLocked = action.state === "lock";
       const locks = personaDevices.filter((d) => matchLockFilter(d, filter));
       for (const d of locks) {
-        const onCap = d.capabilityIds.map((cid) => capabilities[cid]).find((c) => c?.kind === "on_off");
-        if (!onCap) continue;
-        // Convention: on_off === true => locked
-        if (Boolean(onCap.value) !== targetLocked) toggleDevice(d.id);
+        if (isDeviceLocked(d, capabilities) !== targetLocked) toggleDevice(d.id);
       }
       return;
     }
@@ -456,17 +471,31 @@ export const useNexus = create<NexusStore>()(
           seed.push({ id: uid("w"), type: "securityPanel", size: "M" });
         }
 
-        // Zone widget for the first floor of the persona (e.g. "Planta Baja")
+        // ControlHub seeded for the persona's first floor with a curated
+        // selection of devices so the demo feels populated out of the box.
         const personaFloors = FLOORS.filter((f) => f.personaId === personaId).sort((a, b) => a.order - b.order);
         const groundFloor = personaFloors[0];
         if (groundFloor) {
+          const floorDevices = devices.filter((d) => d.floorId === groundFloor.id);
+          const curated: string[] = [];
+          // 1 lock, 2 lights, 1 switch, 1 climate (max 5 visible)
+          const firstLock = floorDevices.find((d) => d.kind === "lock");
+          if (firstLock) curated.push(firstLock.id);
+          curated.push(
+            ...floorDevices.filter((d) => d.kind === "light").slice(0, 2).map((d) => d.id),
+          );
+          const firstSwitch = floorDevices.find((d) => d.kind === "switch");
+          if (firstSwitch) curated.push(firstSwitch.id);
+          const firstClimate = floorDevices.find((d) => d.kind === "climate");
+          if (firstClimate) curated.push(firstClimate.id);
           seed.push({
             id: uid("w"),
-            type: "zone",
-            size: "M",
+            type: "controlHub",
+            size: "L",
             scope: "floor",
             targetId: groundFloor.id,
-            name: groundFloor.name,
+            selectedDeviceIds: curated,
+            showSecurity: true,
           });
         }
 
@@ -516,13 +545,28 @@ export const useNexus = create<NexusStore>()(
       toggleDevice: (deviceId) => {
         const dev = DEVICES.find((d) => d.id === deviceId);
         if (!dev) return;
-        const onOffCapId = dev.capabilityIds.find((cid: string) => {
+        // Locks may use either "on_off" or "lock" capability kind.
+        // Pick the first usable one (prefer on_off if it exists).
+        let onOffCapId = dev.capabilityIds.find((cid: string) => {
           const c = get().capabilities[cid];
           return c?.kind === "on_off";
         });
+        let isLockKind = false;
+        if (!onOffCapId && dev.kind === "lock") {
+          onOffCapId = dev.capabilityIds.find((cid: string) => {
+            const c = get().capabilities[cid];
+            return c?.kind === "lock";
+          });
+          isLockKind = Boolean(onOffCapId);
+        }
         if (!onOffCapId) return;
-        const cap = get().capabilities[onOffCapId];
-        const newValue = !cap.value;
+        const capId = onOffCapId;
+        const cap = get().capabilities[capId];
+        const newValue = isLockKind
+          ? cap.value === "locked"
+            ? "unlocked"
+            : "locked"
+          : !cap.value;
         const updated: Capability = {
           ...cap,
           value: newValue,
@@ -530,33 +574,37 @@ export const useNexus = create<NexusStore>()(
           version: cap.version + 1,
         };
         set((s) => ({
-          capabilities: { ...s.capabilities, [onOffCapId]: updated },
+          capabilities: { ...s.capabilities, [capId]: updated },
         }));
         const correlationId = `cmd_${Date.now().toString(36)}`;
+        const isOn = isLockKind ? newValue === "locked" : Boolean(newValue);
+        const capabilityName = isLockKind ? "lock" : "on_off";
         emit({
-          type: "command.ack", deviceId, capability: "on_off", value: newValue,
+          type: "command.ack", deviceId, capability: capabilityName, value: newValue,
           source: "user", correlationId,
         });
         emit({
-          type: "device.state.changed", deviceId, capability: "on_off", value: newValue,
+          type: "device.state.changed", deviceId, capability: capabilityName, value: newValue,
           source: "user", correlationId, version: updated.version,
         });
+        const intent = isLockKind ? (isOn ? "Cerrar" : "Abrir") : (isOn ? "Encender" : "Apagar");
+        const past = isLockKind ? (isOn ? "cerrado" : "abierto") : (isOn ? "encendido" : "apagado");
         get().appendActivity({
           id: `act_${Date.now().toString(36)}`,
           personaId: dev.personaId,
           ts: updated.ts,
           actor: "user",
-          intent: newValue ? "Encender" : "Apagar",
+          intent,
           target: dev.id,
           outcome: "success",
           source: dev.vendor,
           severity: "info",
-          summary: `${dev.name} ${newValue ? "encendido" : "apagado"}`,
+          summary: `${dev.name} ${past}`,
         });
         toast.success(
-          `${newValue ? "Encendido" : "Apagado"}: ${dev.name}`,
+          `${intent}: ${dev.name}`,
           undefined,
-          { icon: newValue ? "Zap" : "Check", duration: 2500 },
+          { icon: isOn ? "Zap" : "Check", duration: 2500 },
         );
       },
       setCapability: (capabilityId, value) => {
@@ -869,8 +917,8 @@ export const useNexus = create<NexusStore>()(
         if (locksInZone.length === 0) return;
         const wantLocked = action === "lock";
         for (const d of locksInZone) {
-          const onCap = d.capabilityIds.map((cid) => get().capabilities[cid]).find((c) => c?.kind === "on_off");
-          if (onCap && Boolean(onCap.value) !== wantLocked) get().toggleDevice(d.id);
+          const currentlyLocked = isDeviceLocked(d, get().capabilities);
+          if (currentlyLocked !== wantLocked) get().toggleDevice(d.id);
         }
         emit({
           type: "zone.applied",
@@ -1026,7 +1074,7 @@ export function getZoneSummary(
     }
     if (d.kind === "lock") {
       locksTotal++;
-      if (onCap?.value) locksLocked++;
+      if (isDeviceLocked(d, capabilities)) locksLocked++;
     }
     if (motionCap?.value) motionActive = true;
     if (d.kind === "climate" && thermo && typeof thermo.value === "object" && thermo.value) {

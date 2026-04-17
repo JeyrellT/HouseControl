@@ -7,9 +7,9 @@ import {
   Activity, Camera, Tv, Thermometer, DoorOpen, Plus, Check,
 } from "lucide-react";
 import {
-  useNexus, STATIC, selectDevicesInZone, getZoneSummary,
+  useNexus, STATIC, selectDevicesInZone, getZoneSummary, isDeviceLocked,
 } from "@/lib/store";
-import type { Device, ZoneScope } from "@/lib/types";
+import type { Device, ZoneScope, Capability } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -314,7 +314,7 @@ function DeviceList({
   interactive,
 }: {
   devices: Device[];
-  capabilities: Record<string, { id: string; kind: string; value: unknown }>;
+  capabilities: Record<string, Capability | undefined>;
   onToggle: (id: string) => void;
   compact: boolean;
   interactive: boolean;
@@ -334,11 +334,12 @@ function DeviceList({
     <div className="flex-1 overflow-y-auto -mx-1 px-1 space-y-1.5 min-h-0">
       {devices.map((d) => {
         const Icon = KIND_ICON[d.kind] ?? Lightbulb;
+        const lockable = d.kind === "lock";
+        // Toggleable if device has on_off OR is a lock with lock capability
         const onCap = d.capabilityIds
           .map((cid) => capabilities[cid])
-          .find((c) => c?.kind === "on_off");
-        const isOn = Boolean(onCap?.value);
-        const lockable = d.kind === "lock";
+          .find((c) => c?.kind === "on_off" || (lockable && c?.kind === "lock"));
+        const isOn = lockable ? isDeviceLocked(d, capabilities) : Boolean(onCap?.value);
         const labelOn = lockable ? "Cerrado" : "Encendido";
         const labelOff = lockable ? "Abierto" : "Apagado";
         return (

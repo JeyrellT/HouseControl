@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { Plus, Pencil, Check, RotateCcw, LayoutGrid, Shield, ShieldOff, Lock, Thermometer } from "lucide-react";
-import { useNexus, selectActivePersona, selectDevicesByPersona, getZoneSummary } from "@/lib/store";
+import { useNexus, selectActivePersona, selectDevicesByPersona, getZoneSummary, isDeviceLocked } from "@/lib/store";
 import {
   WidgetRenderer,
   WidgetFrame,
@@ -330,10 +330,7 @@ function HomeStatusBand() {
   const stats = useMemo(() => {
     const devices = selectDevicesByPersona(personaId);
     const locks = devices.filter((d) => d.kind === "lock");
-    const lockedCount = locks.filter((d) => {
-      const onCap = d.capabilityIds.map((cid) => capabilities[cid]).find((c) => c?.kind === "on_off");
-      return Boolean(onCap?.value);
-    }).length;
+    const lockedCount = locks.filter((d) => isDeviceLocked(d, capabilities)).length;
     const climates = devices.filter((d) => d.kind === "climate");
     let avgTemp: number | null = null;
     if (climates.length > 0) {
