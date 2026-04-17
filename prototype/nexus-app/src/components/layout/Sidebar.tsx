@@ -4,13 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, Layers, Mic, GitBranch, ScrollText, Settings,
-  ChevronLeft, ChevronRight, MapPin, Activity, Plug, Sparkles, BarChart3, Bell, Camera, UserCircle,
+  ChevronLeft, ChevronRight, MapPin, Activity, Plug, Sparkles, BarChart3, Bell, Camera, UserCircle, LayoutDashboard,
 } from "lucide-react";
 import { useNexus } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: Home },
+  { href: "/home", label: "Inicio", icon: Home },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/rooms", label: "Habitaciones", icon: MapPin },
   { href: "/devices", label: "Dispositivos", icon: Plug },
   { href: "/cameras", label: "Cámaras", icon: Camera },

@@ -250,7 +250,9 @@ export type EventType =
   | "alert.raised"
   | "voice.command"
   | "rbac.role-changed"
-  | "demo.reset";
+  | "demo.reset"
+  | "moment.started"
+  | "moment.finished";
 
 export interface NexusEvent {
   eventId: string;
@@ -263,4 +265,23 @@ export interface NexusEvent {
   correlationId?: string;
   version: number;
   attributes?: Record<string, unknown>;
+}
+
+// ---------- Home Canvas (tablet-style control panel) ----------
+export type WidgetSize = "S" | "M" | "L" | "XL";
+
+export type HomeWidget =
+  | { id: string; type: "camera"; size: WidgetSize; deviceId: string }
+  | { id: string; type: "lightGroup"; size: WidgetSize; deviceIds: string[]; name: string }
+  | { id: string; type: "tv"; size: WidgetSize; deviceId: string }
+  | { id: string; type: "scene"; size: WidgetSize; sceneId: string }
+  | { id: string; type: "climate"; size: WidgetSize; deviceId: string };
+
+export type WidgetType = HomeWidget["type"];
+
+export interface TVState {
+  source: string; // "HDMI1" | "HDMI2" | "Netflix" | "YouTube" | "Spotify" | "Apple TV"
+  volume: number; // 0-100
+  muted: boolean;
+  channel: number;
 }

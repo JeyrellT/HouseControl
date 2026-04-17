@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useTheme } from "next-themes";
 import {
   Home, Layers, Mic, GitBranch, ScrollText, Settings,
-  MapPin, Activity, Plug, Sparkles, BarChart3, Bell, Camera, UserCircle,
+  MapPin, Activity, Plug, Sparkles, BarChart3, Bell, Camera, UserCircle, LayoutDashboard,
   X, ChevronDown, Moon, Sun, Eye, EyeOff, RotateCcw,
 } from "lucide-react";
 import { useNexus, STATIC, selectActivePersona } from "@/lib/store";
@@ -15,7 +15,8 @@ import { cn } from "@/lib/utils";
 import type { PersonaId } from "@/lib/types";
 
 const NAV = [
-  { href: "/dashboard",    label: "Dashboard",     icon: Home },
+  { href: "/home",         label: "Inicio",        icon: Home },
+  { href: "/dashboard",    label: "Dashboard",     icon: LayoutDashboard },
   { href: "/rooms",        label: "Habitaciones",  icon: MapPin },
   { href: "/devices",      label: "Dispositivos",  icon: Plug },
   { href: "/scenes",       label: "Escenas",       icon: Sparkles },

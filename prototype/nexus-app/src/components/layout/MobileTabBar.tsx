@@ -8,7 +8,7 @@ import { useNexus, selectNotificationsByPersona } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { href: "/dashboard", label: "Inicio",   icon: Home,   badge: false },
+  { href: "/home",      label: "Inicio",   icon: Home,   badge: false },
   { href: "/rooms",     label: "Rooms",    icon: MapPin, badge: false },
   { href: "/devices",   label: "Devices",  icon: Plug,   badge: false },
   { href: "/alerts",    label: "Alertas",  icon: Bell,   badge: true  },

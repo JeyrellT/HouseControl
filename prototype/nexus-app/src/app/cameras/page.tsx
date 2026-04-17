@@ -1,67 +1,19 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNexus, selectDevicesByPersona, STATIC } from "@/lib/store";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
 import type { Device } from "@/lib/types";
+import { YouTubeFeed, LiveClock } from "@/components/widgets/CameraFeed";
 import {
-  Camera, Grid2X2, LayoutGrid, Maximize2, Minimize2, X,
+  Camera, Grid2X2, LayoutGrid, Maximize2, X,
   Move, ZoomIn, ZoomOut, RotateCcw, Video, Wifi, WifiOff,
   ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Circle, Eye,
 } from "lucide-react";
-
-/* ── YouTube embed component ──────────────────────────────── */
-
-function YouTubeFeed({ className }: { className?: string }) {
-  const [loaded, setLoaded] = useState(false);
-
-  return (
-    <div className={cn("relative w-full h-full bg-black", className)}>
-      {/* Loading skeleton */}
-      {!loaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-navy/80 z-10">
-          <div className="flex flex-col items-center gap-3">
-            <motion.div
-              animate={{ opacity: [0.3, 1, 0.3] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-            >
-              <Camera className="h-8 w-8 text-ink-soft" />
-            </motion.div>
-            <span className="text-xs text-ink-soft">Conectando feed…</span>
-          </div>
-        </div>
-      )}
-      <iframe
-        src="https://www.youtube.com/embed/Dtkszi85s-g?autoplay=1&mute=1&loop=1&playlist=Dtkszi85s-g&controls=0&showinfo=0&modestbranding=1&rel=0&playsinline=1&disablekb=1"
-        allow="autoplay; encrypted-media"
-        allowFullScreen
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        style={{ border: 0 }}
-        onLoad={() => setLoaded(true)}
-        title="Camera feed"
-      />
-    </div>
-  );
-}
-
-/* ── Live clock ───────────────────────────────────────────── */
-
-function LiveClock() {
-  const [time, setTime] = useState("");
-  useEffect(() => {
-    const tick = () => setTime(new Date().toLocaleTimeString("es-CR", {
-      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
-    }));
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
-  return <span className="tabular-nums font-mono text-[11px]">{time}</span>;
-}
 
 /* ── PTZ Controls (decorative) ────────────────────────────── */
 

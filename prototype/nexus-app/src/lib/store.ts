@@ -24,9 +24,13 @@ import type {
   PersonaId,
   Scene,
   Device,
+  HomeWidget,
+  WidgetSize,
+  TVState,
 } from "./types";
 import { emit } from "./event-bus";
 import { toast } from "./toast-store";
+import { MOMENTS, type Moment, type MomentStepAction } from "./moments";
 
 type Role = "owner" | "admin" | "technician" | "viewer";
 
@@ -65,6 +69,17 @@ const DEFAULT_PROFILE: OwnerProfile = {
   },
 };
 
+const DEFAULT_TV_STATE: TVState = {
+  source: "HDMI1",
+  volume: 35,
+  muted: false,
+  channel: 1,
+};
+
+function uid(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
 interface NexusStore {
   // ----- Sitio activo -----
   activePersonaId: PersonaId;
@@ -95,6 +110,23 @@ interface NexusStore {
   updateOwnerProfile: (patch: Partial<OwnerProfile>) => void;
   updateAIContext: (patch: Partial<OwnerProfile["aiContext"]>) => void;
 
+  // ----- Home Canvas (panel táctil) -----
+  homeWidgets: Record<PersonaId, HomeWidget[]>;
+  homeCanvasInitialized: PersonaId[];
+  homeEditMode: boolean;
+  addHomeWidget: (personaId: PersonaId, widget: HomeWidget) => void;
+  removeHomeWidget: (personaId: PersonaId, widgetId: string) => void;
+  reorderHomeWidgets: (personaId: PersonaId, orderedIds: string[]) => void;
+  resizeHomeWidget: (personaId: PersonaId, widgetId: string, size: WidgetSize) => void;
+  updateHomeWidget: (personaId: PersonaId, widgetId: string, patch: Partial<HomeWidget>) => void;
+  toggleHomeEditMode: () => void;
+  seedHomeCanvas: (personaId: PersonaId) => void;
+  resetHomeCanvas: (personaId: PersonaId) => void;
+
+  // ----- TV demo state (por device) -----
+  tvStates: Record<string, TVState>;
+  setTvState: (deviceId: string, patch: Partial<TVState>) => void;
+
   // ----- Estado en vivo (capabilities mutables) -----
   capabilities: Record<string, Capability>;
   toggleDevice: (deviceId: string) => void;
@@ -113,11 +145,130 @@ interface NexusStore {
   // ----- Acciones de alto nivel -----
   runScene: (sceneId: string) => void;
   resetDemo: () => void;
+
+  // ----- Momentos (flujos multi-dispositivo) -----
+  currentMoment: {
+    momentId: string;
+    stepIndex: number;
+    totalSteps: number;
+    stepLabel: string;
+    affectedDeviceIds: string[];
+  } | null;
+  runMoment: (momentId: string) => void;
 }
 
 const capabilitiesIndex: Record<string, Capability> = Object.fromEntries(
   CAPABILITIES.map((c) => [c.id, c]),
 );
+
+/* ── Moment orchestration helpers ─────────────────────────── */
+
+function matchLightFilter(device: Device, filter: "all" | "indoor" | "outdoor" | "sala" | "bedroom"): boolean {
+  if (device.kind !== "light") return false;
+  if (filter === "all") return true;
+  const rid = device.roomId.toLowerCase();
+  const name = device.name.toLowerCase();
+  if (filter === "sala") return rid.includes("sala") || name.includes("sala");
+  if (filter === "bedroom") return rid.includes("master") || rid.includes("hijos") || rid.includes("dorm") || rid.includes("bedroom");
+  // "indoor"/"outdoor" heuristic: outdoor rooms usually contain "exterior"|"jardin"|"patio"|"garage"
+  const isOutdoor = /exterior|jardin|jard[ií]n|patio|garage|gara|piscina|terraza/.test(rid);
+  return filter === "outdoor" ? isOutdoor : !isOutdoor;
+}
+
+function collectAffectedDeviceIds(action: MomentStepAction, personaDevices: Device[]): string[] {
+  switch (action.kind) {
+    case "lights":
+      return personaDevices.filter((d) => matchLightFilter(d, action.filter)).map((d) => d.id);
+    case "tv": {
+      const tv = personaDevices.find(
+        (d) => d.kind === "switch" && d.labelIds?.includes("lbl-entretenimiento"),
+      );
+      return tv ? [tv.id] : [];
+    }
+    case "climate":
+      return personaDevices.filter((d) => d.kind === "climate").map((d) => d.id);
+    case "cameras":
+      return personaDevices.filter((d) => d.kind === "camera").map((d) => d.id);
+    case "scene":
+      return [];
+  }
+}
+
+interface MomentExecCtx {
+  personaDevices: Device[];
+  scenes: Scene[];
+  capabilities: Record<string, Capability>;
+  setCapability: (capId: string, value: unknown) => void;
+  toggleDevice: (deviceId: string) => void;
+  setTvState: (deviceId: string, patch: Partial<TVState>) => void;
+  runScene: (sceneId: string) => void;
+}
+
+function executeMomentAction(action: MomentStepAction, ctx: MomentExecCtx): void {
+  const { personaDevices, scenes, capabilities, setCapability, toggleDevice, setTvState, runScene } = ctx;
+
+  switch (action.kind) {
+    case "lights": {
+      const devs = personaDevices.filter((d) => matchLightFilter(d, action.filter));
+      for (const d of devs) {
+        const caps = d.capabilityIds.map((cid) => capabilities[cid]).filter(Boolean);
+        const onCap = caps.find((c) => c?.kind === "on_off");
+        const dimCap = caps.find((c) => c?.kind === "dim");
+        const targetOn = action.state === "on";
+        if (onCap && Boolean(onCap.value) !== targetOn) toggleDevice(d.id);
+        if (targetOn && dimCap && typeof action.dim === "number") {
+          setCapability(dimCap.id, action.dim);
+        }
+      }
+      return;
+    }
+    case "tv": {
+      const tv = personaDevices.find(
+        (d) => d.kind === "switch" && d.labelIds?.includes("lbl-entretenimiento"),
+      );
+      if (!tv) return;
+      const onCap = tv.capabilityIds.map((cid) => capabilities[cid]).find((c) => c?.kind === "on_off");
+      const targetOn = action.state === "on";
+      if (onCap && Boolean(onCap.value) !== targetOn) toggleDevice(tv.id);
+      if (targetOn) {
+        const patch: Partial<TVState> = {};
+        if (action.source) patch.source = action.source;
+        if (typeof action.volume === "number") {
+          patch.volume = action.volume;
+          patch.muted = false;
+        }
+        if (Object.keys(patch).length) setTvState(tv.id, patch);
+      }
+      return;
+    }
+    case "climate": {
+      const climates = personaDevices.filter((d) => d.kind === "climate");
+      for (const d of climates) {
+        const thermoCap = d.capabilityIds
+          .map((cid) => capabilities[cid])
+          .find((c) => c?.kind === "thermostat");
+        if (!thermoCap) continue;
+        const current = (thermoCap.value && typeof thermoCap.value === "object")
+          ? (thermoCap.value as Record<string, unknown>)
+          : {};
+        const next = { ...current };
+        if (action.mode) next.mode = action.mode;
+        if (typeof action.target === "number") next.target = action.target;
+        setCapability(thermoCap.id, next);
+      }
+      return;
+    }
+    case "scene": {
+      const pattern = new RegExp(action.sceneIdPattern, "i");
+      const match = scenes.find((s) => pattern.test(s.id) || pattern.test(s.name));
+      if (match) runScene(match.id);
+      return;
+    }
+    case "cameras":
+      // Cameras are typically always-on; this is a placeholder for future control.
+      return;
+  }
+}
 
 export const useNexus = create<NexusStore>()(
   persist(
@@ -153,6 +304,123 @@ export const useNexus = create<NexusStore>()(
           ownerProfile: {
             ...s.ownerProfile,
             aiContext: { ...s.ownerProfile.aiContext, ...patch },
+          },
+        })),
+
+      homeWidgets: {
+        "villa-aurora": [],
+        "nexus-hq": [],
+        "finca-las-palmas": [],
+      },
+      homeCanvasInitialized: [],
+      homeEditMode: false,
+      addHomeWidget: (personaId, widget) =>
+        set((s) => ({
+          homeWidgets: {
+            ...s.homeWidgets,
+            [personaId]: [...(s.homeWidgets[personaId] ?? []), widget],
+          },
+        })),
+      removeHomeWidget: (personaId, widgetId) =>
+        set((s) => ({
+          homeWidgets: {
+            ...s.homeWidgets,
+            [personaId]: (s.homeWidgets[personaId] ?? []).filter((w) => w.id !== widgetId),
+          },
+        })),
+      reorderHomeWidgets: (personaId, orderedIds) =>
+        set((s) => {
+          const byId = new Map((s.homeWidgets[personaId] ?? []).map((w) => [w.id, w]));
+          const next = orderedIds
+            .map((id) => byId.get(id))
+            .filter((w): w is HomeWidget => Boolean(w));
+          return {
+            homeWidgets: { ...s.homeWidgets, [personaId]: next },
+          };
+        }),
+      resizeHomeWidget: (personaId, widgetId, size) =>
+        set((s) => ({
+          homeWidgets: {
+            ...s.homeWidgets,
+            [personaId]: (s.homeWidgets[personaId] ?? []).map((w) =>
+              w.id === widgetId ? ({ ...w, size } as HomeWidget) : w,
+            ),
+          },
+        })),
+      updateHomeWidget: (personaId, widgetId, patch) =>
+        set((s) => ({
+          homeWidgets: {
+            ...s.homeWidgets,
+            [personaId]: (s.homeWidgets[personaId] ?? []).map((w) =>
+              w.id === widgetId ? ({ ...w, ...patch } as HomeWidget) : w,
+            ),
+          },
+        })),
+      toggleHomeEditMode: () => set((s) => ({ homeEditMode: !s.homeEditMode })),
+      seedHomeCanvas: (personaId) => {
+        const state = get();
+        if (state.homeCanvasInitialized.includes(personaId)) return;
+        const devices = DEVICES.filter((d) => d.personaId === personaId);
+        const scenes = SCENES.filter((s) => s.personaId === personaId);
+        const seed: HomeWidget[] = [];
+
+        const firstCamera = devices.find((d) => d.kind === "camera" && d.availability === "online")
+          ?? devices.find((d) => d.kind === "camera");
+        if (firstCamera) {
+          seed.push({ id: uid("w"), type: "camera", size: "L", deviceId: firstCamera.id });
+        }
+
+        // Lights from sala/principal/common room — fallback to first N lights
+        const lights = devices.filter((d) => d.kind === "light");
+        const salaLights = lights.filter((d) => d.roomId.includes("sala"))
+          .slice(0, 4)
+          .map((d) => d.id);
+        const lightIds = salaLights.length >= 2
+          ? salaLights
+          : lights.slice(0, 3).map((d) => d.id);
+        if (lightIds.length > 0) {
+          seed.push({
+            id: uid("w"), type: "lightGroup", size: "M",
+            deviceIds: lightIds, name: salaLights.length ? "Sala" : "Luces principales",
+          });
+        }
+
+        const tvDevice = devices.find(
+          (d) => d.labelIds.includes("lbl-entretenimiento") && d.kind === "switch",
+        );
+        if (tvDevice) {
+          seed.push({ id: uid("w"), type: "tv", size: "M", deviceId: tvDevice.id });
+        }
+
+        if (scenes[0]) {
+          seed.push({ id: uid("w"), type: "scene", size: "S", sceneId: scenes[0].id });
+        }
+        if (scenes[1]) {
+          seed.push({ id: uid("w"), type: "scene", size: "S", sceneId: scenes[1].id });
+        }
+
+        const climate = devices.find((d) => d.kind === "climate");
+        if (climate) {
+          seed.push({ id: uid("w"), type: "climate", size: "M", deviceId: climate.id });
+        }
+
+        set((s) => ({
+          homeWidgets: { ...s.homeWidgets, [personaId]: seed },
+          homeCanvasInitialized: [...s.homeCanvasInitialized, personaId],
+        }));
+      },
+      resetHomeCanvas: (personaId) =>
+        set((s) => ({
+          homeWidgets: { ...s.homeWidgets, [personaId]: [] },
+          homeCanvasInitialized: s.homeCanvasInitialized.filter((p) => p !== personaId),
+        })),
+
+      tvStates: {},
+      setTvState: (deviceId, patch) =>
+        set((s) => ({
+          tvStates: {
+            ...s.tvStates,
+            [deviceId]: { ...DEFAULT_TV_STATE, ...s.tvStates[deviceId], ...patch },
           },
         })),
 
@@ -286,6 +554,100 @@ export const useNexus = create<NexusStore>()(
         );
       },
 
+      currentMoment: null,
+      runMoment: (momentId) => {
+        const moment = MOMENTS.find((m) => m.id === momentId);
+        if (!moment) return;
+        const state = get();
+        const personaId = state.activePersonaId;
+        const personaDevices = DEVICES.filter((d) => d.personaId === personaId);
+        const scenes = [
+          ...SCENES.filter((s) => s.personaId === personaId),
+          ...state.userScenes.filter((s) => s.personaId === personaId),
+        ];
+
+        // Pre-compute all device IDs that any step will touch, for UI highlight.
+        const allAffected = new Set<string>();
+        for (const step of moment.steps) {
+          for (const act of step.actions) {
+            collectAffectedDeviceIds(act, personaDevices).forEach((id) => allAffected.add(id));
+          }
+        }
+
+        emit({
+          type: "moment.started",
+          source: "user",
+          attributes: { momentId, momentName: moment.name },
+        });
+
+        toast.ai(
+          `Momento "${moment.name}"`,
+          moment.tagline,
+          { icon: "Sparkles", duration: 2800 },
+        );
+
+        // Sequential step executor with visual pacing.
+        const runStep = (idx: number) => {
+          if (idx >= moment.steps.length) {
+            set({ currentMoment: null });
+            emit({
+              type: "moment.finished",
+              source: "user",
+              attributes: { momentId },
+            });
+            return;
+          }
+          const step = moment.steps[idx];
+          const affectedThisStep = new Set<string>();
+          step.actions.forEach((a) =>
+            collectAffectedDeviceIds(a, personaDevices).forEach((id) =>
+              affectedThisStep.add(id),
+            ),
+          );
+
+          set({
+            currentMoment: {
+              momentId,
+              stepIndex: idx,
+              totalSteps: moment.steps.length,
+              stepLabel: step.label,
+              affectedDeviceIds: Array.from(affectedThisStep),
+            },
+          });
+
+          // Execute all actions in this step (parallel).
+          for (const action of step.actions) {
+            executeMomentAction(action, {
+              personaDevices,
+              scenes,
+              capabilities: get().capabilities,
+              setCapability: get().setCapability,
+              toggleDevice: get().toggleDevice,
+              setTvState: get().setTvState,
+              runScene: get().runScene,
+            });
+          }
+
+          const delay = step.delayMs ?? 350;
+          setTimeout(() => runStep(idx + 1), delay);
+        };
+
+        runStep(0);
+
+        get().appendActivity({
+          id: `act_${Date.now().toString(36)}`,
+          personaId,
+          ts: new Date().toISOString(),
+          actor: "user",
+          intent: "moment.run",
+          target: momentId,
+          outcome: "success",
+          source: "user",
+          severity: "info",
+          summary: `Momento "${moment.name}" activado · ${allAffected.size} dispositivos`,
+        });
+      },
+
       resetDemo: () => {
         set({
           capabilities: capabilitiesIndex,
@@ -314,6 +676,9 @@ export const useNexus = create<NexusStore>()(
         ownerProfile: state.ownerProfile,
         userScenes: state.userScenes,
         deletedSeedSceneIds: state.deletedSeedSceneIds,
+        homeWidgets: state.homeWidgets,
+        homeCanvasInitialized: state.homeCanvasInitialized,
+        tvStates: state.tvStates,
       }),
     },
   ),
