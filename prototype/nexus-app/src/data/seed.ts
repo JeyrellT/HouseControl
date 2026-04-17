@@ -93,12 +93,19 @@ export const ROOMS: Room[] = [
 
 // ---------- Labels ----------
 export const LABELS: Label[] = [
+  // Cross-cutting (todas las personas)
   { id: "lbl-exterior", personaId: "villa-aurora", name: "Exterior", color: "#A8C090" },
   { id: "lbl-seguridad", personaId: "villa-aurora", name: "Seguridad", color: "#D9534F" },
+  { id: "lbl-emergencia", personaId: "villa-aurora", name: "Emergencia", color: "#B34040" },
   { id: "lbl-confort", personaId: "villa-aurora", name: "Confort", color: "#D4A84B" },
   { id: "lbl-alto-consumo", personaId: "villa-aurora", name: "Alto consumo", color: "#E0A537" },
   { id: "lbl-utilities", personaId: "villa-aurora", name: "Servicios", color: "#6B8FA8" },
-  { id: "lbl-emergencia", personaId: "villa-aurora", name: "Emergencia", color: "#B34040" },
+  // Nuevas etiquetas funcionales
+  { id: "lbl-entretenimiento", personaId: "villa-aurora", name: "Entretenimiento", color: "#8A6FB8" },
+  { id: "lbl-clima", personaId: "villa-aurora", name: "Climatización", color: "#5BA8C4" },
+  { id: "lbl-iluminacion", personaId: "villa-aurora", name: "Iluminación", color: "#E8C26A" },
+  { id: "lbl-acceso", personaId: "villa-aurora", name: "Accesos", color: "#C17C5B" },
+  // Específicas por persona
   { id: "lbl-hq-prod", personaId: "nexus-hq", name: "Productividad", color: "#A8C090" },
   { id: "lbl-finca-riego", personaId: "finca-las-palmas", name: "Riego", color: "#5BB37F" },
 ];
@@ -217,10 +224,11 @@ export const DEVICES: Device[] = [
   {
     id: "dev-master-clima",
     personaId: "villa-aurora", roomId: "room-master", floorId: "floor-villa-2",
-    name: "AC suite", kind: "climate", vendor: "tuya", protocol: "wifi",
-    labelIds: ["lbl-alto-consumo"], capabilityIds: ["cap-master-clima"],
+    name: "A/C suite (inverter)", kind: "climate", vendor: "smartthings", protocol: "wifi",
+    labelIds: ["lbl-clima", "lbl-alto-consumo"], capabilityIds: ["cap-master-clima"],
     availability: "online", localRoute: false, matterCompliant: false,
-    updatedAt: "2026-04-16T18:00:00Z",
+    updatedAt: "2026-04-16T17:50:00Z",
+    physical: { requiresNeutral: true, installationType: "wall", powerSource: "mains" },
   },
   // Niños
   {
@@ -292,17 +300,18 @@ export const DEVICES: Device[] = [
   {
     id: "dev-sala-tv",
     personaId: "villa-aurora", roomId: "room-sala", floorId: "floor-villa-1",
-    name: "Smart TV sala", kind: "switch", vendor: "tuya", protocol: "wifi",
-    labelIds: ["lbl-confort", "lbl-alto-consumo"], capabilityIds: ["cap-sala-tv"],
-    availability: "online", localRoute: false, matterCompliant: false,
-    updatedAt: "2026-04-16T17:45:00Z",
+    name: "Smart TV LG OLED 65 pulgadas", kind: "switch", vendor: "home-assistant", protocol: "wifi",
+    labelIds: ["lbl-entretenimiento", "lbl-alto-consumo"], capabilityIds: ["cap-sala-tv"],
+    availability: "online", localRoute: true, matterCompliant: false,
+    updatedAt: "2026-04-16T18:00:00Z",
+    physical: { requiresNeutral: true, installationType: "outlet", powerSource: "mains" },
   },
   {
     id: "dev-sala-presencia",
     personaId: "villa-aurora", roomId: "room-sala", floorId: "floor-villa-1",
     name: "Sensor presencia sala", kind: "sensor", vendor: "smartthings", protocol: "zigbee",
     bridgeId: "gw-zigbee2mqtt",
-    labelIds: [], capabilityIds: ["cap-sala-presencia", "cap-sala-presencia-bat"],
+    labelIds: ["lbl-seguridad"], capabilityIds: ["cap-sala-presencia", "cap-sala-presencia-bat"],
     availability: "online", localRoute: true, matterCompliant: true,
     updatedAt: "2026-04-16T18:03:00Z",
     physical: { requiresNeutral: false, installationType: "ceiling", powerSource: "battery" },
@@ -657,7 +666,7 @@ export const DEVICES: Device[] = [
     id: "dev-hq-recep-cam",
     personaId: "nexus-hq", roomId: "room-hq-recep", floorId: "floor-hq-1",
     name: "Cámara recepción", kind: "camera", vendor: "ubiquiti", protocol: "wifi",
-    labelIds: [], capabilityIds: ["cap-hq-recep-cam"],
+    labelIds: ["lbl-seguridad"], capabilityIds: ["cap-hq-recep-cam"],
     availability: "online", localRoute: true, matterCompliant: false,
     updatedAt: "2026-04-16T17:00:00Z",
   },
@@ -683,7 +692,7 @@ export const DEVICES: Device[] = [
     id: "dev-finca-cam",
     personaId: "finca-las-palmas", roomId: "room-finca-z1", floorId: "floor-finca-ext",
     name: "Cámara perimetral", kind: "camera", vendor: "ubiquiti", protocol: "wifi",
-    labelIds: [], capabilityIds: ["cap-finca-cam"],
+    labelIds: ["lbl-seguridad", "lbl-exterior"], capabilityIds: ["cap-finca-cam"],
     availability: "online", localRoute: true, matterCompliant: false,
     updatedAt: "2026-04-16T18:00:00Z",
   },
@@ -738,7 +747,7 @@ export const DEVICES: Device[] = [
     id: "dev-cocina-cafetera",
     personaId: "villa-aurora", roomId: "room-cocina", floorId: "floor-villa-1",
     name: "Cafetera Nespresso", kind: "switch", vendor: "tuya", protocol: "wifi",
-    labelIds: [], capabilityIds: ["cap-cocina-cafetera"],
+    labelIds: ["lbl-confort"], capabilityIds: ["cap-cocina-cafetera"],
     availability: "online", localRoute: false, matterCompliant: false,
     updatedAt: "2026-04-16T07:15:00Z",
     physical: { requiresNeutral: true, installationType: "outlet", powerSource: "mains" },
@@ -780,31 +789,13 @@ export const DEVICES: Device[] = [
     physical: { requiresNeutral: true, installationType: "din-rail", powerSource: "mains" },
   },
   {
-    id: "dev-sala-tv",
-    personaId: "villa-aurora", roomId: "room-sala", floorId: "floor-villa-1",
-    name: "Smart TV LG OLED 65\"", kind: "switch", vendor: "home-assistant", protocol: "wifi",
-    labelIds: ["lbl-confort"], capabilityIds: ["cap-sala-tv"],
-    availability: "online", localRoute: true, matterCompliant: false,
-    updatedAt: "2026-04-16T18:00:00Z",
-    physical: { requiresNeutral: true, installationType: "outlet", powerSource: "mains" },
-  },
-  {
     id: "dev-estudio-pc",
     personaId: "villa-aurora", roomId: "room-estudio", floorId: "floor-villa-2",
     name: "Estación PC gaming", kind: "switch", vendor: "tuya", protocol: "wifi",
-    labelIds: [], capabilityIds: ["cap-estudio-pc"],
+    labelIds: ["lbl-entretenimiento", "lbl-alto-consumo"], capabilityIds: ["cap-estudio-pc"],
     availability: "online", localRoute: false, matterCompliant: false,
     updatedAt: "2026-04-16T17:50:00Z",
     physical: { requiresNeutral: true, installationType: "outlet", powerSource: "mains" },
-  },
-  {
-    id: "dev-master-clima",
-    personaId: "villa-aurora", roomId: "room-master", floorId: "floor-villa-2",
-    name: "A/C suite (inverter)", kind: "climate", vendor: "smartthings", protocol: "wifi",
-    labelIds: ["lbl-alto-consumo", "lbl-confort"], capabilityIds: ["cap-master-clima"],
-    availability: "online", localRoute: false, matterCompliant: false,
-    updatedAt: "2026-04-16T17:50:00Z",
-    physical: { requiresNeutral: true, installationType: "wall", powerSource: "mains" },
   },
   {
     id: "dev-hijos-clima",
@@ -839,7 +830,6 @@ export const CAPABILITIES: Capability[] = [
   { id: "cap-master-luz-on", deviceId: "dev-master-luz", kind: "on_off", value: false, ts: "2026-04-16T18:00:00Z", version: 1 },
   { id: "cap-master-luz-dim", deviceId: "dev-master-luz", kind: "dim", value: 0, unit: "%", ts: "2026-04-16T18:00:00Z", version: 1 },
   { id: "cap-master-luz-temp", deviceId: "dev-master-luz", kind: "color_temp", value: 2700, unit: "K", ts: "2026-04-16T18:00:00Z", version: 1 },
-  { id: "cap-master-clima", deviceId: "dev-master-clima", kind: "thermostat", value: { mode: "off", target: 22, current: 23 }, unit: "°C", ts: "2026-04-16T18:00:00Z", version: 1 },
   { id: "cap-hijos-luz-on", deviceId: "dev-hijos-luz", kind: "on_off", value: false, ts: "2026-04-16T17:30:00Z", version: 1 },
   { id: "cap-hijos-luz-dim", deviceId: "dev-hijos-luz", kind: "dim", value: 0, unit: "%", ts: "2026-04-16T17:30:00Z", version: 1 },
   { id: "cap-estudio-luz-on", deviceId: "dev-estudio-luz", kind: "on_off", value: false, ts: "2026-04-16T18:00:00Z", version: 1 },
@@ -862,7 +852,6 @@ export const CAPABILITIES: Capability[] = [
   { id: "cap-entrada-bat", deviceId: "dev-entrada-sensor", kind: "battery", value: 72, unit: "%", ts: "2026-04-16T17:58:00Z", version: 1 },
   // Sala
   { id: "cap-sala-persianas", deviceId: "dev-sala-persianas", kind: "on_off", value: true, ts: "2026-04-16T17:50:00Z", version: 1 },
-  { id: "cap-sala-tv", deviceId: "dev-sala-tv", kind: "on_off", value: false, ts: "2026-04-16T17:45:00Z", version: 1 },
   { id: "cap-sala-presencia", deviceId: "dev-sala-presencia", kind: "motion", value: true, ts: "2026-04-16T18:03:00Z", version: 1 },
   { id: "cap-sala-presencia-bat", deviceId: "dev-sala-presencia", kind: "battery", value: 94, unit: "%", ts: "2026-04-16T18:03:00Z", version: 1 },
   // Cocina

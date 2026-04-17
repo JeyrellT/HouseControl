@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Bell, Moon, Sun, Eye, EyeOff, ChevronDown, RotateCcw,
   Shield, Zap, Wrench, Wifi, Thermometer, Sparkles, UserPlus, Flame, Brain,
+  Menu,
 } from "lucide-react";
 import { useNexus, STATIC, selectActivePersona, selectPrimaryUser, selectNotificationsByPersona } from "@/lib/store";
 import { useState, useEffect } from "react";
@@ -39,6 +40,7 @@ export function Topbar() {
   const role = useNexus((s) => s.activeRole);
   const setRole = useNexus((s) => s.setRole);
   const reset = useNexus((s) => s.resetDemo);
+  const setMobileNavOpen = useNexus((s) => s.setMobileNavOpen);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -53,22 +55,34 @@ export function Topbar() {
   const [notifOpen, setNotifOpen] = useState(false);
 
   return (
-    <header className="h-16 border-b border-line bg-surface px-4 md:px-6 flex items-center gap-3 sticky top-0 z-30 backdrop-blur">
+    <header
+      className="h-16 border-b border-line bg-surface px-3 md:px-6 flex items-center gap-2 md:gap-3 sticky top-0 z-30 backdrop-blur"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
+      {/* Mobile hamburger */}
+      <button
+        onClick={() => setMobileNavOpen(true)}
+        className="md:hidden p-2 -ml-1 rounded-lg hover:bg-surface-2 text-ink-soft transition"
+        aria-label="Abrir menú"
+      >
+        <Menu size={20} />
+      </button>
+
       {/* Site selector */}
       <div className="relative">
         <button
           onClick={() => setSiteOpen((o) => !o)}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-2 hover:bg-line transition border border-line"
+          className="flex items-center gap-2 px-2.5 md:px-3 py-2 rounded-lg bg-surface-2 hover:bg-line transition border border-line max-w-[52vw] md:max-w-none"
         >
-          <span className="w-2 h-2 rounded-full bg-status-ok" />
-          <span className="font-medium text-sm">{persona.name}</span>
+          <span className="w-2 h-2 rounded-full bg-status-ok flex-shrink-0" />
+          <span className="font-medium text-sm truncate">{persona.name}</span>
           <span className="text-xs text-ink-soft hidden sm:inline">· {persona.location}</span>
-          <ChevronDown size={14} className="text-ink-soft" />
+          <ChevronDown size={14} className="text-ink-soft flex-shrink-0" />
         </button>
         {siteOpen && (
           <>
             <div className="fixed inset-0 z-30" onClick={() => setSiteOpen(false)} />
-            <div className="absolute top-12 left-0 w-72 bg-surface-2 border border-line rounded-xl shadow-elev z-40 p-2">
+            <div className="absolute top-12 left-0 w-[min(18rem,calc(100vw-1.5rem))] bg-surface-2 border border-line rounded-xl shadow-elev z-40 p-2">
               {STATIC.personas.map((p) => (
                 <button
                   key={p.id}
@@ -160,7 +174,7 @@ export function Topbar() {
         {notifOpen && (
           <>
             <div className="fixed inset-0 z-30" onClick={() => setNotifOpen(false)} />
-            <div className="absolute top-12 right-0 w-96 bg-surface-2 border border-line rounded-xl shadow-elev z-40 max-h-[28rem] overflow-hidden flex flex-col">
+            <div className="absolute top-12 right-0 w-[min(24rem,calc(100vw-1.5rem))] bg-surface-2 border border-line rounded-xl shadow-elev z-40 max-h-[28rem] overflow-hidden flex flex-col">
               <div className="px-4 py-3 border-b border-line flex items-center justify-between">
                 <div>
                   <div className="text-sm font-semibold">Alertas activas</div>

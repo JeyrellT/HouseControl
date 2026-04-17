@@ -26,6 +26,7 @@ import type {
   Device,
 } from "./types";
 import { emit } from "./event-bus";
+import { toast } from "./toast-store";
 
 type Role = "owner" | "admin" | "technician" | "viewer";
 
@@ -37,6 +38,8 @@ interface NexusStore {
   // ----- UX -----
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
+  mobileNavOpen: boolean;
+  setMobileNavOpen: (open: boolean) => void;
   presentationMode: boolean;
   togglePresentation: () => void;
   density: "minimal" | "dense";
@@ -84,6 +87,8 @@ export const useNexus = create<NexusStore>()(
 
       sidebarCollapsed: false,
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      mobileNavOpen: false,
+      setMobileNavOpen: (open) => set({ mobileNavOpen: open }),
       presentationMode: false,
       togglePresentation: () => set((s) => ({ presentationMode: !s.presentationMode })),
       density: "minimal",
@@ -163,6 +168,11 @@ export const useNexus = create<NexusStore>()(
           severity: "info",
           summary: `${dev.name} ${newValue ? "encendido" : "apagado"}`,
         });
+        toast.success(
+          `${newValue ? "Encendido" : "Apagado"}: ${dev.name}`,
+          undefined,
+          { icon: newValue ? "Zap" : "Check", duration: 2500 },
+        );
       },
       setCapability: (capabilityId, value) => {
         const cap = get().capabilities[capabilityId];
@@ -218,6 +228,11 @@ export const useNexus = create<NexusStore>()(
           severity: "info",
           summary: `Escena "${scene.name}" activada`,
         });
+        toast.ai(
+          `Escena "${scene.name}" activada`,
+          `${Object.keys(scene.targetStates).length} dispositivos ajustados`,
+          { icon: "Sparkles", duration: 3500 },
+        );
       },
 
       resetDemo: () => {
@@ -232,6 +247,7 @@ export const useNexus = create<NexusStore>()(
           deletedSeedSceneIds: [],
         });
         emit({ type: "demo.reset", source: "user" });
+        toast.info("Demo reiniciada", "Estado restaurado al inicial", { icon: "Info", duration: 2500 });
       },
     }),
     {

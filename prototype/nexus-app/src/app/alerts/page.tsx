@@ -6,6 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   useNexus, selectNotificationsByPersona, selectActivePersona,
 } from "@/lib/store";
+import { STATIC } from "@/lib/store";
+import { toast } from "@/lib/toast-store";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import type {
@@ -16,6 +18,7 @@ import {
   Bell, Shield, Zap, Wrench, Wifi, Thermometer, Sparkles, UserPlus, Flame, Brain,
   Check, VolumeX, CheckCircle2, ChevronDown, AlertTriangle, Clock, Filter,
   Siren, Activity as ActivityIcon, TrendingUp, PlayCircle, ExternalLink,
+  List, Map as MapIcon, LineChart, Home, DoorOpen,
 } from "lucide-react";
 
 // ------ Visual config ------
@@ -67,8 +70,8 @@ function absoluteTime(iso: string): string {
   });
 }
 
-// ------ Hero summary ------
-function AlertHero({ list }: { list: Notification[] }) {
+// ------ Hero: Risk Radar gauge + live ticker ------
+function AlertHero({ list, onSimulate }: { list: Notification[]; onSimulate?: () => void }) {
   const active = list.filter((n) => n.status === "active");
   const counts: Record<NotificationSeverity, number> = {
     critical: active.filter((n) => n.severity === "critical").length,
@@ -80,65 +83,211 @@ function AlertHero({ list }: { list: Notification[] }) {
     .reduce((s, n) => s + (n.estimatedImpactCRC ?? 0), 0);
   const resolvedHoy = list.filter((n) => n.status === "resolved").length;
 
-  const pulse = counts.critical > 0;
+  // Risk score 0-100: critical*25 + warn*8 + info*2, capped.
+  const rawRisk = counts.critical * 25 + counts.warn * 8 + counts.info * 2;
+  const risk = Math.min(100, rawRisk);
+  const riskLabel =
+    risk >= 60 ? "Elevado" :
+    risk >= 30 ? "Moderado" :
+    risk > 0  ? "Bajo"   : "Seguro";
+  const riskColor =
+    risk >= 60 ? "#D9534F" :
+    risk >= 30 ? "#E0A537" :
+    risk > 0  ? "#4A90C2" : "#5BB37F";
+
+  // Ticker = últimas 10 notificaciones (cualquier estado) ordenadas por ts desc
+  const ticker = [...list]
+    .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+    .slice(0, 8);
+
+  // SVG gauge geometry
+  const R = 56, CIRC = 2 * Math.PI * R;
+  const dash = (risk / 100) * CIRC;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative rounded-2xl border border-line bg-gradient-to-br from-navy via-navy-soft to-navy p-6 overflow-hidden"
+      className="relative rounded-2xl border border-line bg-gradient-to-br from-navy via-navy-soft to-navy overflow-hidden"
     >
-      <div className={`absolute top-0 right-0 w-80 h-80 rounded-full blur-3xl opacity-30 ${
-        pulse ? "bg-status-critical" : counts.warn > 0 ? "bg-status-warn" : "bg-status-ok"
-      }`} />
-      <div className="relative flex items-start justify-between gap-6 flex-wrap">
-        <div>
+      {/* ambient glow */}
+      <motion.div
+        className="absolute -top-24 -right-24 w-96 h-96 rounded-full blur-3xl opacity-40"
+        style={{ backgroundColor: riskColor }}
+        animate={risk >= 60 ? { opacity: [0.3, 0.55, 0.3] } : undefined}
+        transition={risk >= 60 ? { duration: 2.5, repeat: Infinity } : undefined}
+        aria-hidden
+      />
+      {/* animated scan line */}
+      {risk >= 30 && (
+        <motion.div
+          className="absolute inset-x-0 h-px pointer-events-none"
+          style={{ background: `linear-gradient(90deg, transparent, ${riskColor}60, transparent)` }}
+          animate={{ top: ["0%", "100%", "0%"] }}
+          transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
+          aria-hidden
+        />
+      )}
+
+      <div className="relative p-6 flex flex-col md:flex-row items-stretch gap-6">
+        {/* Left: title + stats */}
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 text-cream/60 text-xs uppercase tracking-widest">
             <Siren className="h-3 w-3" /> Centro de Alertas
+            <span className="ml-2 px-1.5 py-0.5 rounded bg-cream/10 text-cream/80 tracking-normal normal-case">
+              RISK INDEX · {riskLabel}
+            </span>
           </div>
           <h1 className="font-display text-3xl text-cream mt-1">
-            {counts.critical > 0 ? "Atención requerida" : counts.warn > 0 ? "Operación estable con avisos" : "Todo bajo control"}
+            {counts.critical > 0
+              ? "Atención requerida"
+              : counts.warn > 0
+                ? "Operación estable con avisos"
+                : "Todo bajo control"}
           </h1>
           <p className="text-cream/70 text-sm mt-1 max-w-xl">
-            {active.length} alertas activas · {resolvedHoy} resueltas hoy · costo potencial evitable ₡{estimatedCost.toLocaleString("es-CR")}
+            {active.length} alertas activas · {resolvedHoy} resueltas hoy · costo potencial evitable{" "}
+            <span className="font-medium text-amber-300">
+              ₡{estimatedCost.toLocaleString("es-CR")}
+            </span>
           </p>
+
+          {/* Severity chips */}
+          <div className="flex items-center gap-2 mt-4 flex-wrap">
+            {(["critical","warn","info"] as NotificationSeverity[]).map((sev) => {
+              const meta = SEVERITY_META[sev];
+              const count = counts[sev];
+              return (
+                <motion.div
+                  key={sev}
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: sev === "critical" ? 0 : sev === "warn" ? 0.08 : 0.16 }}
+                  className="relative rounded-lg px-3 py-1.5 flex items-center gap-2"
+                  style={{
+                    backgroundColor: `${meta.color}1a`,
+                    border: `1px solid ${meta.color}60`,
+                  }}
+                >
+                  {sev === "critical" && count > 0 && (
+                    <motion.span
+                      className="absolute inset-0 rounded-lg pointer-events-none"
+                      style={{ border: `1px solid ${meta.color}` }}
+                      animate={{ opacity: [0.25, 0.9, 0.25] }}
+                      transition={{ duration: 1.8, repeat: Infinity }}
+                      aria-hidden
+                    />
+                  )}
+                  <span className="text-xl font-bold tabular-nums" style={{ color: meta.color }}>
+                    {count}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider text-cream/70">{meta.label}</span>
+                </motion.div>
+              );
+            })}
+            {onSimulate && (
+              <button
+                data-devonly
+                onClick={onSimulate}
+                className="ml-auto text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-md bg-cream/10 text-cream/70 hover:bg-cream/20 hover:text-cream transition border border-cream/10"
+                title="Simular alerta entrante (dev)"
+              >
+                ⚡ Simular entrante
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {(["critical","warn","info"] as NotificationSeverity[]).map((sev) => {
-            const meta = SEVERITY_META[sev];
-            const count = counts[sev];
-            return (
-              <motion.div
-                key={sev}
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: sev === "critical" ? 0 : sev === "warn" ? 0.1 : 0.2 }}
-                className="relative rounded-xl px-4 py-3 min-w-[92px] text-center"
-                style={{
-                  backgroundColor: `${meta.color}1a`,
-                  border: `1px solid ${meta.color}60`,
-                }}
-              >
-                {sev === "critical" && count > 0 && (
-                  <motion.span
-                    className="absolute inset-0 rounded-xl"
-                    style={{ border: `2px solid ${meta.color}` }}
-                    animate={{ opacity: [0.4, 1, 0.4] }}
-                    transition={{ duration: 2, repeat: Infinity }}
+        {/* Right: radial risk gauge */}
+        <div className="flex-shrink-0 flex items-center gap-4">
+          <div className="relative w-[140px] h-[140px]">
+            <svg viewBox="0 0 140 140" className="w-full h-full -rotate-90">
+              <defs>
+                <linearGradient id="riskGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor={riskColor} stopOpacity="1" />
+                  <stop offset="100%" stopColor={riskColor} stopOpacity="0.5" />
+                </linearGradient>
+              </defs>
+              {/* track */}
+              <circle cx="70" cy="70" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="10" />
+              {/* progress */}
+              <motion.circle
+                cx="70" cy="70" r={R} fill="none"
+                stroke="url(#riskGrad)"
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeDasharray={CIRC}
+                initial={{ strokeDashoffset: CIRC }}
+                animate={{ strokeDashoffset: CIRC - dash }}
+                transition={{ duration: 1.1, ease: "easeOut" }}
+              />
+              {/* tick marks every 10% */}
+              {Array.from({ length: 20 }).map((_, i) => {
+                const a = (i / 20) * 2 * Math.PI;
+                const rx1 = 70 + Math.cos(a) * (R - 14);
+                const ry1 = 70 + Math.sin(a) * (R - 14);
+                const rx2 = 70 + Math.cos(a) * (R - 18);
+                const ry2 = 70 + Math.sin(a) * (R - 18);
+                return (
+                  <line
+                    key={i}
+                    x1={rx1} y1={ry1} x2={rx2} y2={ry2}
+                    stroke="rgba(255,255,255,0.15)" strokeWidth="1"
                   />
-                )}
-                <div className="relative">
-                  <div className="text-2xl font-bold tabular-nums" style={{ color: meta.color }}>
-                    {count}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-wider text-cream/70">{meta.label}</div>
-                </div>
+                );
+              })}
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <motion.div
+                key={risk}
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 250, damping: 18 }}
+                className="font-display text-3xl tabular-nums leading-none"
+                style={{ color: riskColor }}
+              >
+                {risk}
               </motion.div>
-            );
-          })}
+              <div className="text-[9px] uppercase tracking-widest text-cream/60 mt-1">Risk Index</div>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Live ticker */}
+      {ticker.length > 0 && (
+        <div className="relative border-t border-cream/10 bg-black/20 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-1.5 text-[10px] uppercase tracking-widest text-cream/60">
+            <motion.span
+              className="w-1.5 h-1.5 rounded-full bg-status-ok"
+              animate={{ opacity: [0.4, 1, 0.4] }}
+              transition={{ duration: 1.4, repeat: Infinity }}
+            />
+            Live feed
+          </div>
+          <div className="relative overflow-hidden py-1.5 [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]">
+            <motion.div
+              className="flex gap-6 whitespace-nowrap"
+              animate={{ x: ["0%", "-50%"] }}
+              transition={{ duration: Math.max(18, ticker.length * 4), repeat: Infinity, ease: "linear" }}
+            >
+              {[...ticker, ...ticker].map((n, i) => {
+                const meta = CATEGORY_META[n.category];
+                const sev = SEVERITY_META[n.severity];
+                const Icon = meta.Icon;
+                return (
+                  <div key={`${n.id}-${i}`} className="flex items-center gap-2 text-[11px] text-cream/80">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: sev.color }} />
+                    <Icon className="h-3 w-3" style={{ color: meta.color }} />
+                    <span className="text-cream">{n.title}</span>
+                    <span className="text-cream/50">· {relativeTime(n.ts)}</span>
+                  </div>
+                );
+              })}
+            </motion.div>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -437,6 +586,274 @@ function groupByTimeBucket(list: Notification[]): Array<{ bucket: string; items:
     .map(([bucket, items]) => ({ bucket, items }));
 }
 
+// ------ Map view: alertas por habitación ------
+function AlertMapView({
+  list, personaId, onFocusRoom,
+}: {
+  list: Notification[];
+  personaId: string;
+  onFocusRoom: (roomId: string) => void;
+}) {
+  const rooms = STATIC.rooms.filter((r) => r.personaId === personaId);
+  const floors = STATIC.floors.filter((f) => f.personaId === personaId);
+
+  // Group alerts by roomId
+  const byRoom = new Map<string | "unassigned", Notification[]>();
+  list.forEach((n) => {
+    const key = n.roomId ?? "unassigned";
+    const arr = byRoom.get(key) ?? [];
+    arr.push(n);
+    byRoom.set(key, arr);
+  });
+
+  const sevRank: Record<NotificationSeverity, number> = { critical: 0, warn: 1, info: 2 };
+  const worst = (items: Notification[]): NotificationSeverity =>
+    items.reduce<NotificationSeverity>(
+      (acc, n) => (sevRank[n.severity] < sevRank[acc] ? n.severity : acc),
+      "info",
+    );
+
+  const unassigned = byRoom.get("unassigned") ?? [];
+
+  return (
+    <div className="space-y-6">
+      {floors.map((floor) => {
+        const floorRooms = rooms.filter((r) => r.floorId === floor.id);
+        if (floorRooms.length === 0) return null;
+        const floorTotal = floorRooms.reduce((s, r) => s + (byRoom.get(r.id)?.length ?? 0), 0);
+        return (
+          <Card key={floor.id}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Home className="h-4 w-4 text-ink-soft" /> {floor.name}
+                </CardTitle>
+                <span className="text-xs text-ink-soft">{floorTotal} alerta{floorTotal === 1 ? "" : "s"}</span>
+              </div>
+            </CardHeader>
+            <CardBody>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {floorRooms.map((room) => {
+                  const items = byRoom.get(room.id) ?? [];
+                  const cnt = items.length;
+                  const sev = cnt > 0 ? worst(items) : null;
+                  const sevColor = sev ? SEVERITY_META[sev].color : "#3a3a3a";
+                  const sevCounts = {
+                    critical: items.filter((n) => n.severity === "critical").length,
+                    warn: items.filter((n) => n.severity === "warn").length,
+                    info: items.filter((n) => n.severity === "info").length,
+                  };
+
+                  // Top categories in this room
+                  const catCounts = new Map<NotificationCategory, number>();
+                  items.forEach((n) => catCounts.set(n.category, (catCounts.get(n.category) ?? 0) + 1));
+                  const topCats = Array.from(catCounts.entries())
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 3);
+
+                  return (
+                    <motion.button
+                      key={room.id}
+                      onClick={() => onFocusRoom(room.id)}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      whileHover={{ y: -2 }}
+                      className="relative text-left rounded-xl border bg-surface-2 overflow-hidden p-3 transition"
+                      style={{
+                        borderColor: cnt > 0 ? `${sevColor}60` : undefined,
+                        boxShadow: sev === "critical" ? `0 0 20px -6px ${sevColor}` : undefined,
+                      }}
+                    >
+                      {sev === "critical" && (
+                        <motion.div
+                          className="absolute inset-0 rounded-xl pointer-events-none"
+                          style={{ border: `1px solid ${sevColor}` }}
+                          animate={{ opacity: [0.3, 0.9, 0.3] }}
+                          transition={{ duration: 1.8, repeat: Infinity }}
+                        />
+                      )}
+                      <div className="relative">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-xs text-ink-soft">{room.zone ?? "indoor"}</div>
+                            <div className="font-medium text-sm truncate">{room.name}</div>
+                          </div>
+                          <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 tabular-nums text-sm font-bold"
+                            style={{
+                              backgroundColor: cnt > 0 ? `${sevColor}22` : "var(--surface)",
+                              color: cnt > 0 ? sevColor : "var(--ink-soft)",
+                              border: `1px solid ${cnt > 0 ? sevColor + "40" : "var(--line)"}`,
+                            }}
+                          >
+                            {cnt}
+                          </div>
+                        </div>
+
+                        {cnt > 0 ? (
+                          <>
+                            {/* sev stripe */}
+                            <div className="flex gap-0.5 mt-2 h-1 rounded-full overflow-hidden bg-line/40">
+                              {sevCounts.critical > 0 && (
+                                <div style={{ flex: sevCounts.critical, backgroundColor: "#D9534F" }} />
+                              )}
+                              {sevCounts.warn > 0 && (
+                                <div style={{ flex: sevCounts.warn, backgroundColor: "#E0A537" }} />
+                              )}
+                              {sevCounts.info > 0 && (
+                                <div style={{ flex: sevCounts.info, backgroundColor: "#5BB37F" }} />
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                              {topCats.map(([cat, c]) => {
+                                const meta = CATEGORY_META[cat];
+                                const Icon = meta.Icon;
+                                return (
+                                  <span
+                                    key={cat}
+                                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded"
+                                    style={{
+                                      backgroundColor: `${meta.color}18`,
+                                      color: meta.color,
+                                    }}
+                                  >
+                                    <Icon className="h-2.5 w-2.5" /> {c}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-1.5 mt-3 text-[11px] text-status-ok">
+                            <CheckCircle2 className="h-3 w-3" /> Todo tranquilo
+                          </div>
+                        )}
+                      </div>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </CardBody>
+          </Card>
+        );
+      })}
+
+      {unassigned.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <DoorOpen className="h-4 w-4 text-ink-soft" /> Sin habitación asignada
+              <span className="text-xs text-ink-soft font-normal">({unassigned.length})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardBody className="text-xs text-ink-soft">
+            Estas alertas son del sitio global (red, cuentas, IA sistémica).
+          </CardBody>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ------ Timeline view: 24h horizontal strip ------
+function AlertTimelineView({ list }: { list: Notification[] }) {
+  const now = Date.now();
+  const WINDOW = 24 * 60 * 60 * 1000;
+  const start = now - WINDOW;
+  const items = list.filter((n) => new Date(n.ts).getTime() >= start);
+
+  // 24 hour slots
+  const slots = Array.from({ length: 24 }, (_, h) => {
+    const from = start + h * 60 * 60 * 1000;
+    const to = from + 60 * 60 * 1000;
+    const bucket = items.filter((n) => {
+      const t = new Date(n.ts).getTime();
+      return t >= from && t < to;
+    });
+    return { h, from, to, items: bucket };
+  });
+
+  const maxBucket = Math.max(1, ...slots.map((s) => s.items.length));
+  const severityAt = (slot: { items: Notification[] }): NotificationSeverity | null => {
+    if (slot.items.some((n) => n.severity === "critical")) return "critical";
+    if (slot.items.some((n) => n.severity === "warn")) return "warn";
+    if (slot.items.length > 0) return "info";
+    return null;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <LineChart className="h-4 w-4 text-ink-soft" /> Últimas 24 horas
+          <span className="text-xs text-ink-soft font-normal">
+            ({items.length} evento{items.length === 1 ? "" : "s"})
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardBody>
+        <div className="flex items-end gap-1 h-40 relative">
+          {/* y-axis baseline */}
+          <div className="absolute inset-x-0 bottom-0 h-px bg-line" />
+          {slots.map((slot) => {
+            const sev = severityAt(slot);
+            const color = sev ? SEVERITY_META[sev].color : "#2a2a2a";
+            const heightPct = (slot.items.length / maxBucket) * 100;
+            const hourLabel = new Date(slot.from).toLocaleTimeString("es-CR", { hour: "2-digit", hour12: false });
+            return (
+              <div key={slot.h} className="group flex-1 flex flex-col items-center justify-end relative h-full">
+                {slot.items.length > 0 && (
+                  <motion.div
+                    initial={{ height: 0 }}
+                    animate={{ height: `${Math.max(6, heightPct)}%` }}
+                    transition={{ duration: 0.6, delay: slot.h * 0.02, ease: "easeOut" }}
+                    className="w-full rounded-t relative cursor-help"
+                    style={{ backgroundColor: `${color}aa`, border: `1px solid ${color}` }}
+                  >
+                    {sev === "critical" && (
+                      <motion.div
+                        className="absolute inset-0 rounded-t"
+                        style={{ border: `1px solid ${color}` }}
+                        animate={{ opacity: [0.2, 0.9, 0.2] }}
+                        transition={{ duration: 1.6, repeat: Infinity }}
+                      />
+                    )}
+                    {/* tooltip */}
+                    <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition pointer-events-none z-10 bg-surface-2 border border-line rounded-md px-2 py-1 shadow-elev text-[10px] whitespace-nowrap">
+                      <div className="font-medium">{hourLabel}h · {slot.items.length} alerta{slot.items.length === 1 ? "" : "s"}</div>
+                      {slot.items.slice(0, 3).map((n) => (
+                        <div key={n.id} className="text-ink-soft truncate max-w-[200px]">
+                          • {n.title}
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+                {slot.h % 3 === 0 && (
+                  <div className="absolute -bottom-4 text-[9px] text-ink-soft">
+                    {hourLabel}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-3 mt-6 text-[10px] text-ink-soft">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-status-critical" /> Crítico
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-status-warn" /> Aviso
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-status-ok" /> Info
+          </span>
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
 // ------ PAGE ------
 export default function AlertsPage() {
   const personaId = useNexus((s) => s.activePersonaId);
@@ -450,6 +867,7 @@ export default function AlertsPage() {
   const [filterSev, setFilterSev] = useState<NotificationSeverity | "all">("all");
   const [showResolved, setShowResolved] = useState(false);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"feed" | "map" | "timeline">("feed");
 
   const notifications = useMemo<Notification[]>(() => {
     return seeded.map((n) => ({
@@ -482,26 +900,57 @@ export default function AlertsPage() {
   const groups = useMemo(() => groupByTimeBucket(filtered), [filtered]);
 
   const applyAction = (id: string, intent: NotificationActionIntent) => {
-    if (intent === "ack") setOverrides((p) => ({ ...p, [id]: "acknowledged" }));
-    else if (intent === "resolve") setOverrides((p) => ({ ...p, [id]: "resolved" }));
-    else if (intent === "mute") setOverrides((p) => ({ ...p, [id]: "muted" }));
-    // other intents are navigation; treat as ack for demo
-    else setOverrides((p) => ({ ...p, [id]: "acknowledged" }));
+    const n = notifications.find((x) => x.id === id);
+    if (intent === "ack") {
+      setOverrides((p) => ({ ...p, [id]: "acknowledged" }));
+      if (n) toast.info(`Reconocida: ${n.title}`, "Ahora aparece en modo seguimiento.", { icon: "Check", duration: 3000 });
+    } else if (intent === "resolve") {
+      setOverrides((p) => ({ ...p, [id]: "resolved" }));
+      if (n) toast.success(`Resuelta: ${n.title}`, "Movida al historial de alertas.", { icon: "Check", duration: 3000 });
+    } else if (intent === "mute") {
+      setOverrides((p) => ({ ...p, [id]: "muted" }));
+      if (n) toast.warn(`Silenciada: ${n.title}`, "No recibirás avisos durante 24 h.", { icon: "Bell", duration: 3000 });
+    } else {
+      setOverrides((p) => ({ ...p, [id]: "acknowledged" }));
+      if (n) toast.ai(`Ejecutando acción`, `${n.title}`, { icon: "Sparkles", duration: 2500 });
+    }
   };
 
   const resolveAllCritical = () => {
+    let count = 0;
     setOverrides((p) => {
       const out = { ...p };
       notifications.forEach((n) => {
-        if (n.severity === "critical" && n.status === "active") out[n.id] = "acknowledged";
+        if (n.severity === "critical" && n.status === "active") {
+          out[n.id] = "acknowledged";
+          count++;
+        }
       });
       return out;
     });
+    if (count > 0) {
+      toast.success(`${count} alerta${count === 1 ? "" : "s"} crítica${count === 1 ? "" : "s"} reconocida${count === 1 ? "" : "s"}`, undefined, { icon: "Shield", duration: 3000 });
+    } else {
+      toast.info("No hay alertas críticas activas", undefined, { icon: "Check", duration: 2000 });
+    }
+  };
+
+  /** Demo-only: inyectar una alerta simulada como toast */
+  const simulateIncomingAlert = () => {
+    const samples = [
+      { tone: "critical" as const, title: "Movimiento sin reconocer", body: "Cámara jardín detectó presencia a las 02:14 AM.", icon: "Shield" as const },
+      { tone: "warn" as const, title: "Consumo atípico en cocina", body: "Horno lleva 47 min encendido fuera de horario.", icon: "Zap" as const },
+      { tone: "ai" as const, title: "Sugerencia Nexus", body: "Activar 'Modo noche' ahorrará ~₡1.200 mañana.", icon: "Brain" as const },
+      { tone: "info" as const, title: "Bridge Zigbee reconectado", body: "Latencia estabilizada en 38 ms.", icon: "Wifi" as const },
+    ];
+    const pick = samples[Math.floor(Math.random() * samples.length)];
+    const { tone, ...rest } = pick;
+    toast[tone](rest.title, rest.body, { icon: rest.icon, duration: tone === "critical" ? 6500 : 4500 });
   };
 
   return (
     <div className="space-y-6">
-      <AlertHero list={notifications} />
+      <AlertHero list={notifications} onSimulate={simulateIncomingAlert} />
 
       {/* Controls */}
       <Card>
@@ -544,18 +993,44 @@ export default function AlertsPage() {
               </label>
             </div>
             <div className="flex items-center gap-2">
+              {/* View mode toggle */}
+              <div className="flex items-center gap-0.5 p-0.5 rounded-md border border-line bg-surface-2">
+                {([
+                  { id: "feed",     Icon: List,     label: "Feed" },
+                  { id: "map",      Icon: MapIcon,  label: "Mapa" },
+                  { id: "timeline", Icon: LineChart,label: "Timeline" },
+                ] as const).map((v) => {
+                  const active = viewMode === v.id;
+                  const Icon = v.Icon;
+                  return (
+                    <button
+                      key={v.id}
+                      onClick={() => setViewMode(v.id)}
+                      className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition ${
+                        active
+                          ? "bg-navy text-cream"
+                          : "text-ink-soft hover:bg-surface"
+                      }`}
+                      title={v.label}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">{v.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
               <button
                 onClick={resolveAllCritical}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-status-critical/10 text-status-critical border border-status-critical/30 hover:bg-status-critical/20 transition"
               >
                 <AlertTriangle className="h-3.5 w-3.5" />
-                Reconocer todas las críticas
+                Reconocer críticas
               </button>
               <Link
                 href="/health"
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-line text-ink-soft hover:bg-surface-2"
               >
-                <ActivityIcon className="h-3.5 w-3.5" /> Ver salud
+                <ActivityIcon className="h-3.5 w-3.5" /> Salud
               </Link>
             </div>
           </div>
@@ -563,8 +1038,25 @@ export default function AlertsPage() {
         </CardBody>
       </Card>
 
-      {/* Alerts list grouped by time */}
-      {filtered.length === 0 ? (
+      {/* Body renders per viewMode */}
+      {viewMode === "timeline" ? (
+        <AlertTimelineView list={filtered} />
+      ) : viewMode === "map" ? (
+        <AlertMapView
+          list={filtered}
+          personaId={personaId}
+          onFocusRoom={(roomId) => {
+            // Filter feed to that room and jump back to feed view
+            setSearch("");
+            const room = STATIC.rooms.find((r) => r.id === roomId);
+            if (room) {
+              toast.info(`Filtrando alertas: ${room.name}`, undefined, { icon: "Info", duration: 2000 });
+              setSearch(room.name);
+            }
+            setViewMode("feed");
+          }}
+        />
+      ) : filtered.length === 0 ? (
         <Card>
           <CardBody>
             <div className="text-center py-10 text-ink-soft">
