@@ -126,7 +126,7 @@ export function SecurityPanel({
               onClick={() => interactive && setAlarmMode(m.mode)}
               disabled={!interactive}
               className={cn(
-                "h-12 rounded-xl border text-[10px] font-medium inline-flex flex-col items-center justify-center gap-0.5 transition",
+                "h-9 rounded-xl border text-[10px] font-medium inline-flex flex-col items-center justify-center gap-0.5 transition",
                 active
                   ? TONE_ACTIVE[m.tone]
                   : "bg-surface-2 border-line text-ink-soft hover:border-gold-border/40",
@@ -134,7 +134,7 @@ export function SecurityPanel({
               aria-pressed={active}
               aria-label={`Modo ${m.label}`}
             >
-              <m.Icon className="h-3.5 w-3.5" />
+              <m.Icon className="h-3 w-3" />
               <span className="leading-none">{m.label}</span>
             </button>
           );
