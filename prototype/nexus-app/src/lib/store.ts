@@ -459,16 +459,21 @@ export const useNexus = create<NexusStore>()(
         if (scenes[1]) {
           seed.push({ id: uid("w"), type: "scene", size: "S", sceneId: scenes[1].id });
         }
+        if (scenes[2]) {
+          seed.push({ id: uid("w"), type: "scene", size: "S", sceneId: scenes[2].id });
+        }
+        if (scenes[3]) {
+          seed.push({ id: uid("w"), type: "scene", size: "S", sceneId: scenes[3].id });
+        }
 
         const climate = devices.find((d) => d.kind === "climate");
         if (climate) {
           seed.push({ id: uid("w"), type: "climate", size: "M", deviceId: climate.id });
         }
 
-        // Security panel if persona has any locks
-        const hasLocks = devices.some((d) => d.kind === "lock");
-        if (hasLocks) {
-          seed.push({ id: uid("w"), type: "securityPanel", size: "M" });
+        // Security panel whenever the persona has locks
+        if (devices.some((d) => d.kind === "lock")) {
+          seed.push({ id: uid("w"), type: "securityPanel", size: "S" });
         }
 
         // ControlHub seeded for the persona's first floor with a curated
@@ -478,14 +483,11 @@ export const useNexus = create<NexusStore>()(
         if (groundFloor) {
           const floorDevices = devices.filter((d) => d.floorId === groundFloor.id);
           const curated: string[] = [];
-          // 1 lock, 2 lights, 1 switch, 1 climate (max 5 visible)
-          const firstLock = floorDevices.find((d) => d.kind === "lock");
-          if (firstLock) curated.push(firstLock.id);
-          curated.push(
-            ...floorDevices.filter((d) => d.kind === "light").slice(0, 2).map((d) => d.id),
-          );
-          const firstSwitch = floorDevices.find((d) => d.kind === "switch");
-          if (firstSwitch) curated.push(firstSwitch.id);
+          // Up to 10 devices: all locks, covers, up to 4 lights, up to 2 switches, climate
+          floorDevices.filter((d) => d.kind === "lock").forEach((d) => curated.push(d.id));
+          floorDevices.filter((d) => d.kind === "cover").slice(0, 2).forEach((d) => curated.push(d.id));
+          floorDevices.filter((d) => d.kind === "light").slice(0, 4).forEach((d) => curated.push(d.id));
+          floorDevices.filter((d) => d.kind === "switch").slice(0, 2).forEach((d) => curated.push(d.id));
           const firstClimate = floorDevices.find((d) => d.kind === "climate");
           if (firstClimate) curated.push(firstClimate.id);
           seed.push({

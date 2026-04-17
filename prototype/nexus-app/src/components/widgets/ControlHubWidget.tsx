@@ -350,7 +350,9 @@ export function ControlHubWidget({
         />
       ) : (
         <DeviceList
-          devices={selectedDevices}
+          // In room scope show ALL zone devices so the widget always feels full.
+          // In floor scope, use curated selection (fallback to all zone devices).
+          devices={scope === "room" ? zoneDevices : selectedDevices}
           fallbackDevices={zoneDevices}
           capabilities={capabilities}
           onToggle={(id) => interactive && toggleDevice(id)}
